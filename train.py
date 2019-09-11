@@ -60,6 +60,7 @@ def train_epoch(train_loader, val_loader, model, criterion, optimizer, epoch,
                                                                               b_gt=boundary_gt,
                                                                               use_grad=True)
 
+            print('Loss - Depth: {},  Grad: {},  Normals: {},  B: {},  Geo: {}'.format(depth_loss, grad_loss, normals_loss, b_loss, geo_loss))
             loss_real = depth_loss + grad_loss + normals_loss + b_loss + geo_loss
             loss = 1 * depth_loss + 0.1 * grad_loss + 0.5 * normals_loss + 0.005 * b_loss + 0.5 * geo_loss
             loss_real /= float(iter_size)
@@ -198,32 +199,32 @@ def get_trainval_splits(args):
                        'std': [0.229, 0.224, 0.225]}
          }
 
-    if args.dataset != 'NYU':
-        try:
-            with open(os.path.join(args.root_dir, 'jobs_train.txt'), 'r') as f:
-                list_train_files = [line.split('\n')[0] for line in f.readlines() if line != '\n']
-        except Exception as e:
-            print('The file containing the list of images does not exist')
-            print(os.path.join(args.root_dir, 'jobs_train.txt'))
-            sys.exit(0)
+    # if args.dataset != 'NYU':
+    #     try:
+    #         with open(os.path.join(args.root_dir, 'jobs_train.txt'), 'r') as f:
+    #             list_train_files = [line.split('\n')[0] for line in f.readlines() if line != '\n']
+    #     except Exception as e:
+    #         print('The file containing the list of images does not exist')
+    #         print(os.path.join(args.root_dir, 'jobs_train.txt'))
+    #         sys.exit(0)
 
-        try:
-            with open(os.path.join(args.root_dir, 'jobs_val.txt'), 'r') as f:
-                list_val_files = [line.split('\n')[0] for line in f.readlines() if line != '\n']
-        except Exception as e:
-            print('The file containing the list of images does not exist')
-            print(os.path.join(args.root_dir, 'jobs_val.txt'))
-            sys.exit(0)
+    #     try:
+    #         with open(os.path.join(args.root_dir, 'jobs_val.txt'), 'r') as f:
+    #             list_val_files = [line.split('\n')[0] for line in f.readlines() if line != '\n']
+    #     except Exception as e:
+    #         print('The file containing the list of images does not exist')
+    #         print(os.path.join(args.root_dir, 'jobs_val.txt'))
+    #         sys.exit(0)
 
-        if len(list_train_files) < 2:
-            print('Train file contains less than 2 files, error')
-            sys.exit(0)
-        if len(list_val_files) < 2:
-            print('Val file contains less than 2 files, error')
-            sys.exit(0)
+    #     if len(list_train_files) < 2:
+    #         print('Train file contains less than 2 files, error')
+    #         sys.exit(0)
+    #     if len(list_val_files) < 2:
+    #         print('Val file contains less than 2 files, error')
+    #         sys.exit(0)
 
-        train_files = list_train_files
-        val_files = list_val_files
+    #     train_files = list_train_files
+    #     val_files = list_val_files
 
     if args.dataset == 'PBRS':
         train_dataset = PBRSDataset(img_list=train_files, root_dir=args.root_dir,
@@ -247,6 +248,27 @@ def get_trainval_splits(args):
                                  use_depth=True,
                                  use_boundary=False,
                                  use_normals=False)
+    elif args.dataset == 'Synthetic':
+        rgb_dir_train = 'datasets/data/train/star-lying-flat-train/source-files/rgb-imgs'
+        depth_dir_train = 'datasets/data/train/star-lying-flat-train/source-files/depth-imgs-rectified'
+        normals_dir_train = 'datasets/data/train/star-lying-flat-train/source-files/camera-normals'
+        boundary_dir_train = 'datasets/data/train/star-lying-flat-train/source-files/outlines'
+
+        rgb_dir_val = 'datasets/data/train/tree-lying-flat-train/source-files/rgb-imgs'
+        depth_dir_val = 'datasets/data/train/tree-lying-flat-train/source-files/depth-imgs-rectified'
+        normals_dir_val = 'datasets/data/train/tree-lying-flat-train/source-files/camera-normals'
+        boundary_dir_val = 'datasets/data/train/tree-lying-flat-train/source-files/outlines'
+
+        train_dataset = Synthetic(rgb_dir_train, depth_dir_train, normals_dir_train, boundary_dir_train, split_type='train', root_dir=args.root_dir,
+                                   transforms=t,
+                                   use_depth=True,
+                                   use_boundary=True,
+                                   use_normals=True)
+        val_dataset = Synthetic(rgb_dir_val, depth_dir_val, normals_dir_val, boundary_dir_val, split_type='test', root_dir=args.root_dir,
+                                 transforms=t,
+                                 use_depth=True,
+                                 use_boundary=True,
+                                 use_normals=True)
 
     train_dataloader = DataLoader(train_dataset, batch_size=int(args.batch_size),
                                   shuffle=True, num_workers=int(args.num_workers))
@@ -332,8 +354,10 @@ def main():
     resnet_dict = {k.replace('.', '_img.', 1): v for k, v in resnet50_dict.items() if
                    k.replace('.', '_img.', 1) in model_dict}  # load weights up to pool
 
+    print('pre trained weight path is ', args.pretrained_model)
     if args.pretrained_model is not None:
         model_path = args.pretrained_model
+        print('pre trained model path', args.pretrained_model)
         tmp_dict = torch.load(model_path)
         if args.depth:
             pretrained_dict = {k: v for k, v in tmp_dict.items() if k in model_dict}

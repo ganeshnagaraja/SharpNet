@@ -1,5 +1,7 @@
 from torch.utils.data import Dataset
 import os
+import imageio
+import glob
 from PIL import Image
 import numpy as np
 from imageio import imread
@@ -8,6 +10,7 @@ import h5py
 from representations import *
 import data_transforms as transforms
 import random
+from api import utils as api_utils
 
 
 class GeoDataset(Dataset):
@@ -186,7 +189,6 @@ class NYUDataset(GeoDataset):
                                          use_depth=use_depth,
                                          use_normals=use_normals,
                                          input_type=input_type)
-
         self.dataset_path = os.path.join(root_dir, dataset_path)
         used_split = io.loadmat(os.path.join(root_dir, 'nyuv2_splits.mat'))
         self.idx_list = [idx[0] - 1 for idx in used_split[split_type + 'Ndxs']]
@@ -226,3 +228,133 @@ class NYUDataset(GeoDataset):
                                   boundary=boundary)
         return sample
 
+
+class Synthetic(GeoDataset):
+    def __init__(self, rgb_dir, depth_dir, normals_dir, boundary_dir, split_type='train', root_dir='', img_size=480, transforms=None,
+                 use_boundary=False,
+                 use_depth=True,
+                 use_normals=True,
+                 input_type='image'):
+        super(Synthetic, self).__init__(img_list=None, root_dir=root_dir, img_size=img_size,
+                                         transforms=transforms,
+                                         use_boundary=use_boundary,
+                                         use_depth=use_depth,
+                                         use_normals=use_normals,
+                                         input_type=input_type)
+
+        self.rgb_dir = rgb_dir
+        self.depth_dir = depth_dir
+        self.normal_dir = normals_dir
+        self.boundary_dir = boundary_dir
+        self._datalist_rgb = []
+        self._datalist_depth = []
+        self._datalist_normal = []
+        self._datalist_boundary = []
+        self._extension_input = '.jpg'  # The file extension of input images
+        self._extension_depth = '.exr'  # The file extension of depth
+        self._extension_normal = '.exr'  # The file extension of depth
+        self._extension_boundary = '.png'  # The file extension of depth
+        self._create_lists_filenames(self.rgb_dir, self.depth_dir, self.normal_dir, self.boundary_dir)
+
+
+    def __len__(self):
+        return len(self._datalist_rgb)
+
+    def __getitem__(self, idx):
+        image = imageio.imread(self._datalist_rgb[idx])
+        image_new = image
+
+        normals = None
+        boundary = None
+        depth = None
+
+
+        mask_valid = np.ones(shape=image_new.shape[:2], dtype=np.uint8)
+        mask_valid = Mask(data=mask_valid.copy())
+
+        image_new = Image.fromarray(image_new)
+        image = InputImage(data=image_new.copy())
+
+        if self.use_depth:
+
+            data = api_utils.exr_loader(self._datalist_depth[idx], ndim=1)
+            data[np.isinf(data)] = 0
+            data[np.isnan(data)] = 0
+            data[data > 3.0] = 0
+            data = data * 1000 / 65535
+            # print('max , min depth :', data.max(), data.min(), data.dtype)
+            depth = Depth(data=data.copy())
+
+        if self.use_normals:
+            data = api_utils.exr_loader(self._datalist_depth[idx])
+            data = data.transpose(1,2,0)
+            normals = Normals(data=data.copy())
+
+
+        if self.use_boundary:
+            data = imageio.imread(self._datalist_boundary[idx])
+            data[data > 1] = 0
+            data = data.astype(np.float32)
+            boundary = Contours(data=data.copy())
+
+        sample = self.format_data(image,
+                                  mask_valid=mask_valid,
+                                  depth=depth,
+                                  normals=normals,
+                                  boundary=boundary)
+        return sample
+
+    def _create_lists_filenames(self, rgb_dir, labels_dir, normal_dir, boundary_dir):
+        assert os.path.isdir(rgb_dir), 'Dataloader given images directory that does not exist: "%s"' % (rgb_dir)
+        if labels_dir is None:
+            print('labels dir not given, are you running eval on real dataset?')
+        else:
+            assert os.path.isdir(labels_dir), 'Dataloader given labels directory that does not exist: "%s"' % (labels_dir)
+
+        # make list of  normals files
+        normalsSearchStr = os.path.join(rgb_dir, '*' + self._extension_input)
+        normalspaths = sorted(glob.glob(normalsSearchStr))
+
+        self._datalist_rgb = normalspaths
+
+        numImages = len(self._datalist_rgb)
+        if labels_dir is not None:
+            assert os.path.isdir(labels_dir), ('Dataloader given labels directory that does not exist: "%s"'
+                                               % (labels_dir))
+            labelSearchStr = os.path.join(labels_dir, '*' + self._extension_depth)
+            labelpaths = sorted(glob.glob(labelSearchStr))
+            numLabels = len(labelpaths)
+            if numLabels == 0:
+                raise ValueError('No labels found in given directory. Searched for {}'.format(labels_dir))
+            if numImages != numLabels:
+                raise ValueError('The number of images and labels do not match. Please check data,\
+                                found {} images and {} labels' .format(numImages, numLabels))
+            self._datalist_depth = labelpaths
+        else:
+            print('labels dir empty, processing real images')
+
+        if normal_dir is not None:
+            assert os.path.isdir(normal_dir), ('Dataloader given normals directory that does not exist: "%s"'
+                                               % (normal_dir))
+            labelSearchStr = os.path.join(normal_dir, '*' + self._extension_normal)
+            labelpaths = sorted(glob.glob(labelSearchStr))
+            numNormals = len(labelpaths)
+            if numNormals == 0:
+                raise ValueError('No normal files found in given directory. Searched for {}'.format(normal_dir))
+            if numImages != numNormals:
+                raise ValueError('The number of images and normals do not match. Please check data,\
+                                found {} images and {} labels' .format(numImages, numNormals))
+            self._datalist_normal = labelpaths
+
+        if boundary_dir is not None:
+            assert os.path.isdir(normal_dir), ('Dataloader given outlines directory that does not exist: "%s"'
+                                               % (boundary_dir))
+            labelSearchStr = os.path.join(boundary_dir, '*' + self._extension_boundary)
+            labelpaths = sorted(glob.glob(labelSearchStr))
+            numBoundary = len(labelpaths)
+            if numBoundary == 0:
+                raise ValueError('No normal files found in given directory. Searched for {}'.format(normal_dir))
+            if numImages != numBoundary:
+                raise ValueError('The number of images and outlines do not match. Please check data,\
+                                found {} images and {} labels' .format(numImages, numBoundary))
+            self._datalist_boundary = labelpaths

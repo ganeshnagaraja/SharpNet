@@ -139,8 +139,15 @@ class Normals(Representation):
     def __init__(self, data):
         super(Normals, self).__init__(data=data, name='normals')
         # normalize normals
+        if np.isnan(self.data).any():
+            print('ERROR!!!!!!!!!!!!!!!!!!!!!!!! NORMALS HAS NAN')
         n = np.linalg.norm(self.data, 2, axis=2)
+        # print('linalg.norm:', )
+        if np.isnan(n).any():
+            # normalized_v = v / np.sqrt(np.sum(v**2))
+            print('ERROR!!!!!!!!!!!!!!!!!!!!! NAN LINALG.NORM')
         self.data = self.data / (np.expand_dims(n, axis=2).clip(1e-4))
+        # print('normals.data:', self.data.shape, self.data.dtype)
 
     def scale(self, ratio):
         # transform normals

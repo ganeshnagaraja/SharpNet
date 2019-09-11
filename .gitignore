@@ -1,0 +1,6 @@
+__pycache__/
+api/
+checkpoints/*
+datasets/*
+logs/*
+models/*
