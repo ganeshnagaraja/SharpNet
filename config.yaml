@@ -72,7 +72,7 @@ train:
  # Training/Validation Params
   dataset: 'clear_grasp' # possible values ['Synthetic', 'NYU', 'PBRS']
   experiment_name: 'sharpnet_exp'
-  batch_size: 8
+  batch_size: 64
   iter_size: 3
   boundary: True
   normals: True
@@ -80,15 +80,15 @@ train:
   geo_consensus: True
   decoder_freeze: 'normals, boundary'
   verbose: True
-  root_dir: 'datasets'
+  root_dir: 'data'
   nocuda: False
   learning_rate: 1e-5
   lr_mode: 'poly'
   max_epoch: 500
   start_epoch: 0
   gradient_step: 5e-2
-  cuda_device: '0'
-  num_workers: 8
+  cuda_device: '0,1,2,3,4,5,6,7'
+  num_workers: 32
   pretrained_model: 'models/final_checkpoint_NYU.pth'
   bias: True
   optimizer: 'SGD'
