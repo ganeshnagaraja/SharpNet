@@ -12,7 +12,7 @@ train:
       outlines: 'data/datasets/train/flower-lying-flat-train/source-files/outlines'
     - rgb: 'data/datasets/train/hearts-in-containers-train/source-files/rgb-imgs'
       normals: 'data/datasets/train/hearts-in-containers-train/source-files/camera-normals'
-      depth: 'data/datasets/train/hearts-in-containers-train/source-files/camera-normals'
+      depth: 'data/datasets/train/hearts-in-containers-train/source-files/depth-imgs-rectified'
       outlines: 'data/datasets/train/hearts-in-containers-train/source-files/outlines'
     - rgb: 'data/datasets/train/stemless-plastic-champagne-glasses-lying-flat-train/source-files/rgb-imgs'
       normals: 'data/datasets/train/stemless-plastic-champagne-glasses-lying-flat-train/source-files/camera-normals'
