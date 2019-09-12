@@ -262,10 +262,10 @@ class Synthetic(GeoDataset):
         self._datalist_depth = []
         self._datalist_normal = []
         self._datalist_boundary = []
-        self._extension_input = ['.jpg']
-        self._extension_depth = ['.exr']
-        self._extension_normal = ['.exr']
-        self._extension_boundary = ['.png']
+        self._extension_input = ['-transparent-rgb-img.jpg', '-rgb.jpg', '-input-img.jpg']
+        self._extension_depth = ['depth-rectified.exr', 'transparent-depth-img.exr']
+        self._extension_normal = ['-cameraNormals.exr', '-normals.exr']
+        self._extension_boundary = ['outlineSegmentation.png', ]
         self._create_lists_filenames(self.rgb_dir, self.depth_dir, self.normal_dir, self.boundary_dir)
 
 
