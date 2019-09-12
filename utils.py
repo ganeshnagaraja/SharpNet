@@ -6,6 +6,9 @@ import torch
 import torch.nn as nn
 import matplotlib.pyplot as plt
 from data_transforms import *
+import torchvision.utils as vutils
+from torchvision.utils import make_grid
+from torchvision import transforms
 
 
 def round_down(num, divisor):
@@ -240,3 +243,148 @@ def adjust_learning_rate(lr, lr_mode, step, max_epoch, optimizer, epoch):
         param_group['lr'] = lr
 
     return lr
+
+def normal_to_rgb(normals_to_convert):
+    '''Converts a surface normals array into an RGB image.
+    Surface normals are represented in a range of (-1,1),
+    This is converted to a range of (0,255) to be written
+    into an image.
+    The surface normals are normally in camera co-ords,
+    with positive z axis coming out of the page. And the axes are
+    mapped as (x,y,z) -> (R,G,B).
+
+    Args:
+        normals_to_convert (numpy.ndarray): Surface normals, dtype float32, range [-1, 1]
+    '''
+    camera_normal_rgb = (normals_to_convert + 1) / 2
+    # camera_normal_rgb *= 127.5
+    # camera_normal_rgb = camera_normal_rgb.astype(np.uint8)
+    return camera_normal_rgb
+
+def _normalize_depth_img(depth_img, dtype=np.uint8, min_depth=0.0, max_depth=1.0):
+    '''Converts a floating point depth image to uint8 or uint16 image.
+    The depth image is first scaled to (0.0, max_depth) and then scaled and converted to given datatype.
+
+    Args:
+        depth_img (numpy.float32): Depth image, value is depth in meters
+        dtype (numpy.dtype, optional): Defaults to np.uint16. Output data type. Must be np.uint8 or np.uint16
+        max_depth (float, optional): The max depth to be considered in the input depth image. The min depth is
+            considered to be 0.0.
+    Raises:
+        ValueError: If wrong dtype is given
+
+    Returns:
+        numpy.ndarray: Depth image scaled to given dtype
+    '''
+
+    if dtype != np.uint16 and dtype != np.uint8:
+        raise ValueError('Unsupported dtype {}. Must be one of ("np.uint8", "np.uint16")'.format(dtype))
+
+    # Clip depth image to given range
+    depth_img = np.ma.masked_array(depth_img, mask=(depth_img == 0.0))
+    depth_img = np.ma.clip(depth_img, min_depth, max_depth)
+
+    # Get min/max value of given datatype
+    type_info = np.iinfo(dtype)
+    min_val = type_info.min
+    max_val = type_info.max
+
+    # Scale the depth image to given datatype range
+    depth_img = ((depth_img - min_depth) / (max_depth - min_depth)) * max_val
+    depth_img = depth_img.astype(dtype)
+
+    depth_img = np.ma.filled(depth_img, fill_value=0)  # Convert back to normal numpy array from masked numpy array
+
+    return depth_img
+
+def depth2rgb(depth_img, min_depth=0.0, max_depth=1.5, color_mode=cv2.COLORMAP_JET, reverse_scale=False,
+              dynamic_scaling=False):
+    '''Generates RGB representation of a depth image.
+    To do so, the depth image has to be normalized by specifying a min and max depth to be considered.
+
+    Holes in the depth image (0.0) appear black in color.
+
+    Args:
+        depth_img (numpy.ndarray): Depth image, values in meters. Shape=(H, W), dtype=np.float32
+        min_depth (float): Min depth to be considered
+        max_depth (float): Max depth to be considered
+        color_mode (int): Integer or cv2 object representing Which coloring scheme to use.
+                          Please consult https://docs.opencv.org/master/d3/d50/group__imgproc__colormap.html
+
+                          Each mode is mapped to an int. Eg: cv2.COLORMAP_AUTUMN = 0.
+                          This mapping changes from version to version.
+        reverse_scale (bool): Whether to make the largest values the smallest to reverse the color mapping
+        dynamic_scaling (bool): If true, the depth image will be colored according to the min/max depth value within the
+                                image, rather that the passed arguments.
+    Returns:
+        numpy.ndarray: RGB representation of depth image. Shape=(H,W,3)
+    '''
+    # Map depth image to Color Map
+    if dynamic_scaling:
+        depth_img_scaled = _normalize_depth_img(depth_img, dtype=np.uint8,
+                                                min_depth=max(depth_img[depth_img > 0].min(), min_depth),    # Add a small epsilon so that min depth does not show up as black (invalid pixels)
+                                                max_depth=min(depth_img.max(), max_depth))
+    else:
+        depth_img_scaled = _normalize_depth_img(depth_img, dtype=np.uint8, min_depth=min_depth, max_depth=max_depth)
+
+    if reverse_scale is True:
+        depth_img_scaled = np.ma.masked_array(depth_img_scaled, mask=(depth_img_scaled == 0.0))
+        depth_img_scaled = 255 - depth_img_scaled
+        depth_img_scaled = np.ma.filled(depth_img_scaled, fill_value=0)
+
+    depth_img_mapped = cv2.applyColorMap(depth_img_scaled, color_mode)
+    depth_img_mapped = cv2.cvtColor(depth_img_mapped, cv2.COLOR_BGR2RGB)
+
+    # Make holes in input depth black:
+    depth_img_mapped[depth_img_scaled == 0, :] = 0
+
+    return depth_img_mapped
+
+
+def create_grid_image(inputs, normals_gt, normals_pred, depth_gt, depth_pred, max_num_images_to_save=3):
+    '''Make a grid of images for display purposes
+    Size of grid is (3, N, 3), where each coloum belongs to input, output, label resp
+
+    Args:
+        inputs (Tensor): Batch Tensor of shape (B x C x H x W)
+        outputs (Tensor): Batch Tensor of shape (B x C x H x W)
+        labels (Tensor): Batch Tensor of shape (B x C x H x W)
+        max_num_images_to_save (int, optional): Defaults to 3. Out of the given tensors, chooses a
+            max number of imaged to put in grid
+
+    Returns:
+        numpy.ndarray: A numpy array with of input images arranged in a grid
+    '''
+    min_depth = 0.05
+    max_depth = 2.5
+    depth_gt = depth_gt * 65535 / 1000 # de-normalizing depth
+    depth_pred = depth_pred * 65535 / 1000  # de-normalizing depth
+
+    # inverse normalize rgb image
+    mean=[0.485, 0.456, 0.406]
+    std=[0.229, 0.224, 0.225]
+    inputs[:, 0, :, :] = inputs[:, 0, :, :] * std[0] + mean[0]
+    inputs[:, 1, :, :] = inputs[:, 1, :, :] * std[1] + mean[1]
+    inputs[:, 2, :, :] = inputs[:, 2, :, :] * std[2] + mean[2]
+
+    img_tensor = inputs[:max_num_images_to_save]
+    img_tensor_normals_gt = normals_gt[:max_num_images_to_save]
+    img_tensor_normals_pred = normals_pred[:max_num_images_to_save]
+    img_tensor_depth_gt = depth_gt[:max_num_images_to_save]
+    img_tensor_depth_pred = depth_pred[:max_num_images_to_save]
+
+    images = []
+    for h, i, j, k, l in zip(img_tensor, img_tensor_normals_gt, img_tensor_normals_pred, img_tensor_depth_gt, img_tensor_depth_pred):
+        i = transforms.ToTensor()(normal_to_rgb(i.numpy().transpose(1, 2, 0)))  # Normals to RGB
+        j = transforms.ToTensor()(normal_to_rgb(j.numpy().transpose(1, 2, 0)))
+        k = transforms.ToTensor()(depth2rgb(k.squeeze(0).numpy(),
+                                                      min_depth=min_depth,
+                                                      max_depth=max_depth))
+        l = transforms.ToTensor()(depth2rgb(l.squeeze(0).numpy(),
+                                                      min_depth=min_depth,
+                                                      max_depth=max_depth))
+
+        images.extend([h, i, j, k, l])
+    grid_image = make_grid(images, nrow=5, normalize=False, scale_each=False)
+
+    return grid_image

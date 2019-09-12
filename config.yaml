@@ -1,0 +1,117 @@
+# train.py Config - Training
+train:
+  # Synthetic datasets with ground truth labelsinp, output shapes :
+  datasetsTrain:
+    - rgb: 'data/datasets/train/cup-with-waves-lying-flat-train/source-files/rgb-imgs'
+      normals: 'data/datasets/train/cup-with-waves-lying-flat-train/source-files/camera-normals'
+      depth: 'data/datasets/train/cup-with-waves-lying-flat-train/source-files/depth-imgs-rectified'
+      outlines: 'data/datasets/train/cup-with-waves-lying-flat-train/source-files/outlines'
+    - rgb: 'data/datasets/train/flower-lying-flat-train/source-files/rgb-imgs'
+      normals: 'data/datasets/train/flower-lying-flat-train/source-files/camera-normals'
+      depth: 'data/datasets/train/flower-lying-flat-train/source-files/depth-imgs-rectified'
+      outlines: 'data/datasets/train/flower-lying-flat-train/source-files/outlines'
+    - rgb: 'data/datasets/train/hearts-in-containers-train/source-files/rgb-imgs'
+      normals: 'data/datasets/train/hearts-in-containers-train/source-files/camera-normals'
+      depth: 'data/datasets/train/hearts-in-containers-train/source-files/camera-normals'
+      outlines: 'data/datasets/train/hearts-in-containers-train/source-files/outlines'
+    - rgb: 'data/datasets/train/stemless-plastic-champagne-glasses-lying-flat-train/source-files/rgb-imgs'
+      normals: 'data/datasets/train/stemless-plastic-champagne-glasses-lying-flat-train/source-files/camera-normals'
+      depth: 'data/datasets/train/stemless-plastic-champagne-glasses-lying-flat-train/source-files/depth-imgs-rectified'
+      outlines: 'data/datasets/train/stemless-plastic-champagne-glasses-lying-flat-train/source-files/outlines'
+    - rgb: 'data/datasets/train/square-clear-plastic-bottle-lying-flat-train/source-files/rgb-imgs'
+      normals: 'data/datasets/train/square-clear-plastic-bottle-lying-flat-train/source-files/camera-normals'
+      depth: 'data/datasets/train/square-clear-plastic-bottle-lying-flat-train/source-files/depth-imgs-rectified'
+      outlines: 'data/datasets/train/square-clear-plastic-bottle-lying-flat-train/source-files/outlines'
+    - rgb: 'data/datasets/train/hearts-in-containers-2-train/source-files/rgb-imgs'
+      normals: 'data/datasets/train/hearts-in-containers-2-train/source-files/camera-normals'
+      depth: 'data/datasets/train/hearts-in-containers-2-train/source-files/depth-imgs-rectified'
+      outlines: 'data/datasets/train/hearts-in-containers-2-train/source-files/outlines'
+    - rgb: 'data/datasets/train/stemless-plastic-champagne-glasses-lying-flat-2-train/source-files/rgb-imgs'
+      normals: 'data/datasets/train/stemless-plastic-champagne-glasses-lying-flat-2-train/source-files/camera-normals'
+      depth: 'data/datasets/train/stemless-plastic-champagne-glasses-lying-flat-2-train/source-files/depth-imgs-rectified'
+      outlines: 'data/datasets/train/stemless-plastic-champagne-glasses-lying-flat-2-train/source-files/outlines'
+    - rgb: 'data/datasets/train/square-clear-plastic-bottle-lying-flat-2-train/source-files/rgb-imgs'
+      normals: 'data/datasets/train/square-clear-plastic-bottle-lying-flat-2-train/source-files/camera-normals'
+      depth: 'data/datasets/train/square-clear-plastic-bottle-lying-flat-2-train/source-files/depth-imgs-rectified'
+      outlines: 'data/datasets/train/square-clear-plastic-bottle-lying-flat-2-train/source-files/outlines'
+    # - rgb: 'datasets/data/train/milk-bottles-train/source-files/rgb-imgs'
+    #   depth: 'datasets/data/train/milk-bottles-train/source-files/depth-imgs-rectified'
+    #   normals: 'datasets/data/train/milk-bottles-train/source-files/camera-normals'
+    #   outlines: 'datasets/data/train/milk-bottles-train/source-files/outlines'
+    
+    
+
+  # Synthetic datasets with ground truth labels - 10% split of train
+  datasetsVal:
+    # - rgb: 'datasets/data/val/milk-bottles-val/source-files/rgb-imgs'
+    #   depth: 'datasets/data/val/milk-bottles-val/source-files/depth-imgs-rectified'
+    #   normals: 'datasets/data/val/milk-bottles-val/source-files/camera-normals'
+    #   outlines: 'datasets/data/val/milk-bottles-val/source-files/outlines'
+    - rgb: 'data/datasets/paper_dataset_real/val/d435/'
+      normals: 'data/datasets/paper_dataset_real/val/d435/'
+      depth: 'data/datasets/paper_dataset_real/val/d435/'
+      outlines: 'data/datasets/paper_dataset_real/val/d435/'
+    # - rgb: 'data/datasets/paper_dataset_synthetic/val/hearts_val/rgb-imgs'
+    #   normals: 'data/datasets/paper_dataset_synthetic/val/hearts_val/camera-normals'
+    #   depth: 'data/datasets/paper_dataset_synthetic/val/hearts_val/depth-imgs-rectified'
+    #   outlines: 'data/datasets/paper_dataset_synthetic/val/hearts_val/outlines'
+    # - rgb: 'data/datasets/paper_dataset_synthetic/val/stemless_plastic_champagne_glass_val/rgb-imgs'
+    #   normals: 'data/datasets/paper_dataset_synthetic/val/stemless_plastic_champagne_glass_val/camera-normals'
+    #   depth: 'data/datasets/paper_dataset_synthetic/val/stemless_plastic_champagne_glass_val/depth-imgs-rectified'
+    #   outlines: 'data/datasets/paper_dataset_synthetic/val/stemless_plastic_champagne_glass_val/outlines'
+    # - rgb: 'data/datasets/paper_dataset_synthetic/val/square_plastic_bottle_val/rgb-imgs'
+    #   normals: 'data/datasets/paper_dataset_synthetic/val/square_plastic_bottle_val/camera-normals'
+    #   depth: 'data/datasets/paper_dataset_synthetic/val/square_plastic_bottle_val/depth-imgs-rectified'
+    #   outlines: 'data/datasets/paper_dataset_synthetic/val/square_plastic_bottle_val/outlines'
+
+  # Real Images (no ground truth labels)
+  datasetsTestReal:
+    - rgb: 'data/datasets/paper_dataset_real/val/d435/'
+      normals: 'data/datasets/paper_dataset_real/val/d435/'
+      depth: 'data/datasets/paper_dataset_real/val/d435/'
+      outlines: 'data/datasets/paper_dataset_real/val/d435/'
+​
+  # Synthetic datasets with ground truth labels - Used as test set
+  datasetsTestSynthetic:
+    - rgb: 'data/datasets/paper_dataset_synthetic/test/star_bath_bomb_test/rgb-imgs'
+      normals: 'data/datasets/paper_dataset_synthetic/test/star_bath_bomb_test/camera-normals'
+      depth: 'data/datasets/paper_dataset_synthetic/test/star_bath_bomb_test/depth-imgs-rectified'
+      outlines: 'data/datasets/paper_dataset_synthetic/test/star_bath_bomb_test/outlines'
+    - rgb: 'data/datasets/paper_dataset_synthetic/test/tree_bath_bomb_test/rgb-imgs'
+      normals: 'data/datasets/paper_dataset_synthetic/test/tree_bath_bomb_test/camera-normals'
+      depth: 'data/datasets/paper_dataset_synthetic/test/tree_bath_bomb_test/depth-imgs-rectified'
+      outlines: 'data/datasets/paper_dataset_synthetic/test/tree_bath_bomb_test/outlines'
+    - rgb: 'data/datasets/paper_dataset_synthetic/test/selected_potion_square_test/rgb-imgs'
+      normals: 'data/datasets/paper_dataset_synthetic/test/selected_potion_square_test/camera-normals'
+      depth: 'data/datasets/paper_dataset_synthetic/test/selected_potion_square_test/depth-imgs-rectified'
+      outlines: 'data/datasets/paper_dataset_synthetic/test/selected_potion_square_test/outlines'
+    - rgb: 'data/datasets/paper_dataset_synthetic/test/selected_potion_round_test/rgb-imgs'
+      normals: 'data/datasets/paper_dataset_synthetic/test/selected_potion_round_test/camera-normals'
+      depth: 'data/datasets/paper_dataset_synthetic/test/selected_potion_round_test/depth-imgs-rectified'
+      outlines: 'data/datasets/paper_dataset_synthetic/test/selected_potion_round_test/outlines'
+
+
+ # Training/Validation Params
+  dataset: 'clear_grasp' # possible values ['Synthetic', 'NYU', 'PBRS']
+  experiment_name: 'sharpnet_exp'
+  batch_size: 8
+  iter_size: 3
+  boundary: True
+  normals: True
+  depth: True
+  geo_consensus: True
+  decoder_freeze: 'normals, boundary'
+  verbose: True
+  root_dir: 'datasets'
+  nocuda: False
+  learning_rate: 1e-5
+  lr_mode: 'poly'
+  max_epoch: 500
+  start_epoch: 0
+  gradient_step: 5e-2
+  cuda_device: '0'
+  num_workers: 8
+  pretrained_model: 'models/final_checkpoint_NYU.pth'
+  bias: True
+  optimizer: 'SGD'
+  decay: 5e-5

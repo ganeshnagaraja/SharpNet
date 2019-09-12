@@ -52,6 +52,10 @@ class Representation(object):
     def normalize(self):
         return 1
 
+    def resize(self, w, h, interpolation):
+        self.data = cv2.resize(self.data, (w, h), interpolation)
+        return 1
+
 
 class InputImage(Representation):
     """
@@ -116,7 +120,7 @@ class InputImage(Representation):
         std = torch.FloatTensor(std)
 
         image = self.data
-        
+
         if image.device.type != 'cpu':
             means = [mean] * image.size()[0]
             stds = [std] * image.size()[0]
@@ -128,8 +132,14 @@ class InputImage(Representation):
 
         self.set_data(image)
 
+    
         return 1
-
+    
+    def resize(self, w, h, interpolation):
+        self.data = np.array(self.data)
+        self.data = cv2.resize(self.data, (w, h), interpolation)
+        self.data = Image.fromarray(self.data)
+        return 1
 
 class Normals(Representation):
     """
@@ -139,19 +149,17 @@ class Normals(Representation):
     def __init__(self, data):
         super(Normals, self).__init__(data=data, name='normals')
         # normalize normals
-        if np.isnan(self.data).any():
-            print('ERROR!!!!!!!!!!!!!!!!!!!!!!!! NORMALS HAS NAN')
+        # normalized_v = v / np.sqrt(np.sum(v**2))
         n = np.linalg.norm(self.data, 2, axis=2)
-        # print('linalg.norm:', )
         if np.isnan(n).any():
-            # normalized_v = v / np.sqrt(np.sum(v**2))
-            print('ERROR!!!!!!!!!!!!!!!!!!!!! NAN LINALG.NORM')
+            print('ERROR!!!!!!!!!!!!!!!!!!!!! NAN LINALG.NORM NORMALS')
+
         self.data = self.data / (np.expand_dims(n, axis=2).clip(1e-4))
-        # print('normals.data:', self.data.shape, self.data.dtype)
 
     def scale(self, ratio):
         # transform normals
         super(Normals, self).scale(ratio, interpolation='NEAREST')
+        # TODO: WTF - Why is channel 2 (Z-axis) being scaled?
         self.data[..., 2] *= ratio
         norm = np.linalg.norm(self.data, 2, axis=2)
         self.data = self.data / (np.expand_dims(norm, axis=2).clip(1e-4))

@@ -2,6 +2,9 @@ import torch
 import datetime
 from torch.optim import SGD, Adam
 import argparse
+import oyaml
+from attrdict import AttrDict
+from termcolor import colored
 
 from tensorboardX import SummaryWriter
 from torchnet.meter import MovingAverageValueMeter
@@ -23,12 +26,12 @@ def train_epoch(train_loader, val_loader, model, criterion, optimizer, epoch,
                 depth_loss_meter, grad_loss_meter,
                 normals_loss_meter,
                 date_str, model_save_path,
-                args,
+                config,
                 boundary_loss_meter=None, consensus_loss_meter=None):
 
-    batch_size = int(args.batch_size)
-    iter_size = args.iter_size
-    num_workers = int(args.num_workers)
+    batch_size = int(config.train.batch_size)
+    iter_size = config.train.iter_size
+    num_workers = int(config.train.num_workers)
 
     loader_iter = iter(train_loader)
 
@@ -41,15 +44,17 @@ def train_epoch(train_loader, val_loader, model, criterion, optimizer, epoch,
         iter_boundary_loss = 0
         iter_consensus_loss = 0
 
-        freeze_decoders = args.decoder_freeze.split(',')
+        freeze_decoders = config.train.decoder_freeze.split(',')
         freeze_model_decoders(model, freeze_decoders)
 
         # accumulated gradients
         for i in range(iter_size):
             # get ground truth sample
-            input, mask_gt, depth_gt, normals_gt, boundary_gt = get_gt_sample(train_loader, loader_iter, args)
+            input, mask_gt, depth_gt, normals_gt, boundary_gt = get_gt_sample(train_loader, loader_iter, config.train)
+
             # compute output
-            depth_pred, normals_pred, boundary_pred = get_tensor_preds(input, model, args)
+            depth_pred, normals_pred, boundary_pred = get_tensor_preds(input, model, config.train)
+
             # compute loss
             depth_loss, grad_loss, normals_loss, b_loss, geo_loss = criterion(mask_gt,
                                                                               d_pred=depth_pred,
@@ -60,7 +65,6 @@ def train_epoch(train_loader, val_loader, model, criterion, optimizer, epoch,
                                                                               b_gt=boundary_gt,
                                                                               use_grad=True)
 
-            print('Loss - Depth: {},  Grad: {},  Normals: {},  B: {},  Geo: {}'.format(depth_loss, grad_loss, normals_loss, b_loss, geo_loss))
             loss_real = depth_loss + grad_loss + normals_loss + b_loss + geo_loss
             loss = 1 * depth_loss + 0.1 * grad_loss + 0.5 * normals_loss + 0.005 * b_loss + 0.5 * geo_loss
             loss_real /= float(iter_size)
@@ -101,18 +105,27 @@ def train_epoch(train_loader, val_loader, model, criterion, optimizer, epoch,
             consensus_loss_meter.add(float(iter_consensus_loss))
 
         train_size = len(train_loader.dataset)
-        iter_per_epoch = int(train_size/args.batch_size)
+        iter_per_epoch = int(train_size/config.train.batch_size)
         train_loss_meter.add(float(iter_loss))
-        print("epoch: " + str(epoch) + " | iter: {}/{} ".format(iter_i, iter_per_epoch) + "| Train Loss: " + str(float(iter_loss)))
+        print("\nepoch: " + str(epoch) + " | iter: {}/{} ".format(iter_i, iter_per_epoch) + "| Train Loss: " + str(float(iter_loss)) + '\n')
         train_writer.add_scalar("train_loss", train_loss_meter.value()[0],
                                 int(epoch) * iter_per_epoch + iter_i)
 
-        write_loss_components(train_writer, iter_i, epoch, train_size, args,
+        write_loss_components(train_writer, iter_i, epoch, train_size, config.train,
                               depth_loss_meter, iter_depth_loss,
                               normals_loss_meter, iter_normals_loss,
                               boundary_loss_meter, iter_boundary_loss,
                               grad_loss_meter, iter_grad_loss,
                               consensus_loss_meter, iter_consensus_loss)
+
+        normals_gt = normals_gt.detach().cpu() if normals_gt is not None else torch.ones_like(input, dtype=torch.float32)
+        normals_pred = normals_pred.detach().cpu() if normals_gt is not None else torch.ones_like(input, dtype=torch.float32)
+
+        grid_image = create_grid_image(input.detach().cpu(),
+                                             normals_gt.detach().cpu() , normals_pred.detach().cpu().float(),
+                                             depth_gt.detach().cpu(), depth_pred.detach().cpu(),
+                                             max_num_images_to_save=16)
+        train_writer.add_image('Train image', grid_image, int(epoch) * iter_per_epoch + iter_i)
 
         if (iter_i + 1) % 50 == 0:
             val_loss = 0
@@ -132,9 +145,9 @@ def train_epoch(train_loader, val_loader, model, criterion, optimizer, epoch,
                 n_val_batches = int(float(val_size) / batch_size)
                 for i in range(n_val_batches)[:50]:
                     # get ground truth sample
-                    input, mask_gt, depth_gt, normals_gt, boundary_gt = get_gt_sample(val_loader, loader_iter, args)
+                    input, mask_gt, depth_gt, normals_gt, boundary_gt = get_gt_sample(val_loader, loader_iter, config.train)
                     # compute output
-                    depth_pred, normals_pred, boundary_pred = get_tensor_preds(input, model, args)
+                    depth_pred, normals_pred, boundary_pred = get_tensor_preds(input, model, config.train)
                     # compute loss
                     depth_loss, grad_loss, normals_loss, b_loss, geo_loss = criterion(mask_gt,
                                                                                       d_pred=depth_pred,
@@ -166,16 +179,22 @@ def train_epoch(train_loader, val_loader, model, criterion, optimizer, epoch,
             val_writer.add_scalar("val_loss", val_loss_meter.value()[0],
                                   int(epoch) * iter_per_epoch + iter_i)
 
-            write_loss_components(val_writer, iter_i, epoch, train_size, args,
+            write_loss_components(val_writer, iter_i, epoch, train_size, config.train,
                                   depth_loss_meter, val_depth_loss,
                                   normals_loss_meter, val_normals_loss,
                                   boundary_loss_meter, val_boundary_loss,
                                   grad_loss_meter, val_grad_loss,
                                   consensus_loss_meter, val_consensus_loss)
+            
+            grid_image = create_grid_image(input.detach().cpu(),
+                                             normals_gt.detach().cpu(),normals_pred.detach().cpu().float(),
+                                             depth_gt.detach().cpu(), depth_pred.detach().cpu(),
+                                             max_num_images_to_save=16)
+            val_writer.add_image('Val image', grid_image, int(epoch) * iter_per_epoch + iter_i)
 
             model.train()
 
-            freeze_decoders = args.decoder_freeze.split(',')
+            freeze_decoders = config.train.decoder_freeze.split(',')
             freeze_model_decoders(model, freeze_decoders)
 
         if (iter_i + 1) % 1000 == 0:
@@ -189,16 +208,22 @@ def train_epoch(train_loader, val_loader, model, criterion, optimizer, epoch,
             print('Done')
 
 
-def get_trainval_splits(args):
-    t = {'SCALE': 2,
-         'CROP': 320,
-         'HORIZONTALFLIP': 1,
-         'ROTATE': 6,
-         'GAMMA': 0.15,
-         'NORMALIZE': {'mean': [0.485, 0.456, 0.406],
-                       'std': [0.229, 0.224, 0.225]}
+def get_trainval_splits(config):
+
+    args = config.train
+    t = {'NORMALIZE': {'mean': [0.485, 0.456, 0.406],
+                       'std': [0.229, 0.224, 0.225]},
+         'RESIZE_TRANSPARENT': 256
          }
 
+    # t = {'SCALE': 2,
+    #      'CROP': 320,
+    #      'HORIZONTALFLIP': 1,
+    #      'ROTATE': 6,
+    #      'GAMMA': 0.15,
+    #      'NORMALIZE': {'mean': [0.485, 0.456, 0.406],
+    #                    'std': [0.229, 0.224, 0.225]}
+    #      }
     # if args.dataset != 'NYU':
     #     try:
     #         with open(os.path.join(args.root_dir, 'jobs_train.txt'), 'r') as f:
@@ -248,27 +273,27 @@ def get_trainval_splits(args):
                                  use_depth=True,
                                  use_boundary=False,
                                  use_normals=False)
-    elif args.dataset == 'Synthetic':
-        rgb_dir_train = 'datasets/data/train/star-lying-flat-train/source-files/rgb-imgs'
-        depth_dir_train = 'datasets/data/train/star-lying-flat-train/source-files/depth-imgs-rectified'
-        normals_dir_train = 'datasets/data/train/star-lying-flat-train/source-files/camera-normals'
-        boundary_dir_train = 'datasets/data/train/star-lying-flat-train/source-files/outlines'
-
-        rgb_dir_val = 'datasets/data/train/tree-lying-flat-train/source-files/rgb-imgs'
-        depth_dir_val = 'datasets/data/train/tree-lying-flat-train/source-files/depth-imgs-rectified'
-        normals_dir_val = 'datasets/data/train/tree-lying-flat-train/source-files/camera-normals'
-        boundary_dir_val = 'datasets/data/train/tree-lying-flat-train/source-files/outlines'
-
-        train_dataset = Synthetic(rgb_dir_train, depth_dir_train, normals_dir_train, boundary_dir_train, split_type='train', root_dir=args.root_dir,
+    elif args.dataset == 'clear_grasp':
+        train_loader_list = []
+        for dataset in config.train.datasetsTrain:
+            train_dataset = Synthetic(dataset.rgb, dataset.depth, dataset.normals, dataset.outlines, split_type='train', root_dir=args.root_dir,
                                    transforms=t,
                                    use_depth=True,
                                    use_boundary=True,
                                    use_normals=True)
-        val_dataset = Synthetic(rgb_dir_val, depth_dir_val, normals_dir_val, boundary_dir_val, split_type='test', root_dir=args.root_dir,
+            train_loader_list.append(train_dataset)
+
+        test_loader_list = []
+        for dataset in config.train.datasetsVal:
+            val_dataset = Synthetic(dataset.rgb, dataset.depth, dataset.normals, dataset.outlines, split_type='test', root_dir=args.root_dir,
                                  transforms=t,
                                  use_depth=True,
                                  use_boundary=True,
                                  use_normals=True)
+            test_loader_list.append(val_dataset)
+
+        train_dataset = torch.utils.data.ConcatDataset(train_loader_list)
+        val_dataset = torch.utils.data.ConcatDataset(test_loader_list)
 
     train_dataloader = DataLoader(train_dataset, batch_size=int(args.batch_size),
                                   shuffle=True, num_workers=int(args.num_workers))
@@ -281,38 +306,18 @@ def get_trainval_splits(args):
 
 def main():
     parser = argparse.ArgumentParser(description="Train the SharpNet network")
-    parser.add_argument('--dataset', '-d', dest='dataset', help='Name of the dataset (MLT, NYUv2 or pix3d)')
-    parser.add_argument('--exp_name', dest='experiment_name', help='Custom name of the experiment', type=str, default=None)
-    parser.add_argument('--batch-size', '-b', dest='batch_size', type=int, default=3, help='Batch size')
-    parser.add_argument('--iter-size', dest='iter_size', type=int, default=3,
-                        help='Iteration size (for accumulated gradients)')
-    parser.add_argument('--boundary', action='store_true',
-                        help='Use boundary decoder')
-    parser.add_argument('--normals', action='store_true',
-                        help='Use normals decoder')
-    parser.add_argument('--depth', action='store_true',
-                        help='Use depth decoder')
-    parser.add_argument('--consensus', dest='geo_consensus', action='store_true')
-    parser.add_argument('--freeze', dest='decoder_freeze', default='', type=str,
-                        help='Decoders to freeze (comma seperated)')
-    parser.add_argument('--verbose', action='store_true', help='Activate to display loss components terms')
-    parser.add_argument('--rootdir', '-r', dest='root_dir', default='', help='Root Directory of the dataset')
-    parser.add_argument('--nocuda', action="store_true", help='Use flag to use on CPU only (currently not supported)')
-    parser.add_argument('--lr', dest='learning_rate', type=float, default=1e-5, help='Initial learning rate')
-    parser.add_argument('--lr-mode', dest='lr_mode', default='poly', help='Learning rate decay mode')
-    parser.add_argument('--max-epoch', dest='max_epoch', type=int, default=1000, help='MAXITER')
-    parser.add_argument('--step', '-s', dest='gradient_step', default=5e-2, help='gradient step')
-    parser.add_argument('--cuda', dest='cuda_device', default="0", help='CUDA device ID')
-    parser.add_argument('--cpu', dest='num_workers', default=4)
-    parser.add_argument('--pretrained-model', dest='pretrained_model', default=None, help="Choose a model to fine tune")
-    parser.add_argument('--start_epoch', dest='start_epoch', default=0, type=int, help="Starting epoch")
-    parser.add_argument('--bias', action="store_true", help="Flag to learn bias in decoder convnet")
-    parser.add_argument('--optimizer', dest='optimizer', default='SGD', type=str, help="Optimizer type: SGD  /  Adam")
-    parser.add_argument('--decay', dest='decay', default=5e-5, type=float, help="Weight decay rate")
-
+    parser.add_argument('-c', '--configFile', required=True, help='Path to config yaml file', metavar='path/to/config')
     args = parser.parse_args()
-    os.environ['CUDA_VISIBLE_DEVICES'] = str(args.cuda_device)
-    cuda = False if args.nocuda else True
+
+    CONFIG_FILE_PATH = args.configFile
+    with open(CONFIG_FILE_PATH) as fd:
+        config_yaml = oyaml.load(fd)  # Returns an ordered dict. Used for printing
+
+    config = AttrDict(config_yaml)
+    print(colored('Config being used for training:\n{}\n\n'.format(oyaml.dump(config_yaml)), 'green'))
+
+    os.environ['CUDA_VISIBLE_DEVICES'] = config.train.cuda_device
+    cuda = False if config.train.nocuda else True
 
     resnet50_url = 'https://download.pytorch.org/models/resnet50-19c8e357.pth'
 
@@ -330,13 +335,13 @@ def main():
     t = []
     torch.manual_seed(329)
 
-    bias = True if args.bias else False
+    bias = True if config.train.bias else False
 
     # build model
     model = SharpNet(ResBlock, [3, 4, 6, 3], [2, 2, 2, 2, 2],
-                     use_normals=True if args.normals else False,
-                     use_depth=True if args.depth else False,
-                     use_boundary=True if args.boundary else False,
+                     use_normals=True if config.train.normals else False,
+                     use_depth=True if config.train.depth else False,
+                     use_boundary=True if config.train.boundary else False,
                      bias_decoder=bias)
 
     model_dict = model.state_dict()
@@ -354,12 +359,11 @@ def main():
     resnet_dict = {k.replace('.', '_img.', 1): v for k, v in resnet50_dict.items() if
                    k.replace('.', '_img.', 1) in model_dict}  # load weights up to pool
 
-    print('pre trained weight path is ', args.pretrained_model)
-    if args.pretrained_model is not None:
-        model_path = args.pretrained_model
-        print('pre trained model path', args.pretrained_model)
+    print('Loading checkpoint from {}'.format(config.train.pretrained_model))
+    if config.train.pretrained_model is not None:
+        model_path = config.train.pretrained_model
         tmp_dict = torch.load(model_path)
-        if args.depth:
+        if config.train.depth:
             pretrained_dict = {k: v for k, v in tmp_dict.items() if k in model_dict}
         else:
             pretrained_dict = {k: v for k, v in tmp_dict.items() if
@@ -380,31 +384,31 @@ def main():
     model.zero_grad()
     model.train()
 
-    freeze_decoders = args.decoder_freeze.split(',')
+    freeze_decoders = config.train.decoder_freeze.split(',')
     freeze_model_decoders(model, freeze_decoders)
 
-    if args.dataset != 'NYU':
+    if config.train.dataset != 'NYU':
         sharpnet_loss = SharpNetLoss(lamb=0.5, mu=1.0,
-                                     use_depth=True if args.depth else False,
-                                     use_boundary=True if args.boundary else False,
-                                     use_normals=True if args.normals else False,
-                                     use_geo_consensus=True if args.geo_consensus else False)
+                                     use_depth=True if config.train.depth else False,
+                                     use_boundary=True if config.train.boundary else False,
+                                     use_normals=True if config.train.normals else False,
+                                     use_geo_consensus=True if config.train.geo_consensus else False)
     else:
         sharpnet_loss = SharpNetLoss(lamb=0.5, mu=1.0,
-                                     use_depth=True if args.depth else False,
+                                     use_depth=True if config.train.depth else False,
                                      use_boundary=False,
                                      use_normals=False,
-                                     use_geo_consensus=True if args.geo_consensus else False)
+                                     use_geo_consensus=True if config.train.geo_consensus else False)
 
-    if args.optimizer == 'SGD':
+    if config.train.optimizer == 'SGD':
         optimizer = SGD(params=get_params(model),
-                        lr=args.learning_rate,
-                        weight_decay=args.decay,
+                        lr=float(config.train.learning_rate),
+                        weight_decay=float(config.train.decay),
                         momentum=0.9)
-    elif args.optimizer == 'Adam':
+    elif config.train.optimizer == 'Adam':
         optimizer = Adam(params=get_params(model),
-                         lr=args.learning_rate,
-                         weight_decay=args.decay)
+                         lr=float(config.train.learning_rate),
+                         weight_decay=float(config.train.decay))
     else:
         print('Could not configure the optimizer, please select --optimizer Adam or SGD')
         sys.exit(0)
@@ -412,13 +416,13 @@ def main():
     # TensorBoard Logger
     train_loss_meter = MovingAverageValueMeter(20)
     val_loss_meter = MovingAverageValueMeter(3)
-    depth_loss_meter = MovingAverageValueMeter(3) if args.depth else None
-    normals_loss_meter = MovingAverageValueMeter(3) if args.normals and args.dataset != 'NYU' else None
-    grad_loss_meter = MovingAverageValueMeter(3) if args.depth else None
-    boundary_loss_meter = MovingAverageValueMeter(3) if args.boundary and args.dataset != 'NYU' else None
-    consensus_loss_meter = MovingAverageValueMeter(3) if args.geo_consensus else None
+    depth_loss_meter = MovingAverageValueMeter(3) if config.train.depth else None
+    normals_loss_meter = MovingAverageValueMeter(3) if config.train.normals and config.train.dataset != 'NYU' else None
+    grad_loss_meter = MovingAverageValueMeter(3) if config.train.depth else None
+    boundary_loss_meter = MovingAverageValueMeter(3) if config.train.boundary and config.train.dataset != 'NYU' else None
+    consensus_loss_meter = MovingAverageValueMeter(3) if config.train.geo_consensus else None
 
-    exp_name = args.experiment_name if args.experiment_name is not None else ''
+    exp_name = config.train.experiment_name if config.train.experiment_name is not None else ''
     print('Experiment Name: {}'.format(exp_name))
 
     log_dir = os.path.join('logs', 'Joint', str(exp_name) + '_' + date_str)
@@ -434,35 +438,38 @@ def main():
         os.makedirs(os.path.join(log_dir, 'train'))
         os.makedirs(os.path.join(log_dir, 'val'))
 
-    train_dataloader, val_dataloader = get_trainval_splits(args)
+    train_dataloader, val_dataloader = get_trainval_splits(config)  # SHREK: Added Modification to pass in config.
+                                                                # Either pass in path to config file, or real yaml and pass in the dict of config file.
+                                                                # Config file need only contain the paths to datasets train and val.
+                                                                # For val, we'd like to pass real images dataset.
 
-    for epoch in range(args.max_epoch):
-        if args.optimizer == 'SGD':
-            adjust_learning_rate(args.learning_rate, args.lr_mode, args.gradient_step, args.max_epoch,
+    for epoch in range(config.train.max_epoch):
+        if config.train.optimizer == 'SGD':
+            adjust_learning_rate(float(config.train.learning_rate), config.train.lr_mode, float(config.train.gradient_step), config.train.max_epoch,
                                  optimizer, epoch)
 
-        train_epoch(train_dataloader, val_dataloader, model, sharpnet_loss, optimizer, args.start_epoch + epoch,
+        train_epoch(train_dataloader, val_dataloader, model, sharpnet_loss, optimizer, config.train.start_epoch + epoch,
                     train_writer, val_writer,
                     train_loss_meter, val_loss_meter,
                     depth_loss_meter, grad_loss_meter,
                     normals_loss_meter,
                     date_str=date_str, model_save_path=cp_dir,
-                    args=args, boundary_loss_meter=boundary_loss_meter, consensus_loss_meter=consensus_loss_meter)
+                    config=config, boundary_loss_meter=boundary_loss_meter, consensus_loss_meter=consensus_loss_meter)
 
         # Save a model
-        if epoch % 2 == 0 and epoch > int(0.9 * args.max_epoch):
+        if epoch % 2 == 0 and epoch > int(0.9 * config.train.max_epoch):
             torch.save(
                 model.state_dict(),
-                os.path.join(cp_dir, 'checkpoint_{}_final.pth'.format(args.start_epoch + epoch)),
+                os.path.join(cp_dir, 'checkpoint_{}_final.pth'.format(config.train.start_epoch + epoch)),
             )
         elif epoch % 10 == 0:
             torch.save(
                 model.state_dict(),
-                os.path.join(cp_dir, 'checkpoint_{}_final.pth'.format(args.start_epoch + epoch)),
+                os.path.join(cp_dir, 'checkpoint_{}_final.pth'.format(config.train.start_epoch + epoch)),
             )
     torch.save(
         model.state_dict(),
-        os.path.join(cp_dir, 'checkpoint_{}_final.pth'.format(args.start_epoch + args.max_epoch)),
+        os.path.join(cp_dir, 'checkpoint_{}_final.pth'.format(config.train.start_epoch + config.train.max_epoch)),
     )
 
     return None

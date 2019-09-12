@@ -10,6 +10,7 @@ import h5py
 from representations import *
 import data_transforms as transforms
 import random
+import cv2
 from api import utils as api_utils
 
 
@@ -54,7 +55,10 @@ class GeoDataset(Dataset):
             angle = 0
             gamma_ratio = 1
             normalize = False
+            flip = None
 
+            if 'RESIZE_TRANSPARENT' in self.transforms.keys():
+                h, w = 256, 256
             if 'SCALE' in self.transforms.keys():
                 ratio = random.uniform(1.0 / self.transforms['SCALE'], 1.0 * self.transforms['SCALE'])
             if 'HORIZONTALFLIP' in self.transforms.keys():
@@ -68,6 +72,13 @@ class GeoDataset(Dataset):
                 gamma_ratio = random.uniform(1 / self.transforms['GAMMA'], self.transforms['GAMMA'])
             if 'NORMALIZE' in self.transforms.keys():
                 normalize = True
+
+            for m, mode in enumerate(data):
+                if mode is not None:
+                    if m == 0:
+                        mode.resize(w, h, cv2.INTER_LINEAR)
+                    else:
+                        mode.resize(w, h, cv2.INTER_NEAREST)
 
             for mode in data:
                 if mode is not None:
@@ -242,6 +253,7 @@ class Synthetic(GeoDataset):
                                          use_normals=use_normals,
                                          input_type=input_type)
 
+        self.MAX_DEPTH = 3.0
         self.rgb_dir = rgb_dir
         self.depth_dir = depth_dir
         self.normal_dir = normals_dir
@@ -250,10 +262,10 @@ class Synthetic(GeoDataset):
         self._datalist_depth = []
         self._datalist_normal = []
         self._datalist_boundary = []
-        self._extension_input = '.jpg'  # The file extension of input images
-        self._extension_depth = '.exr'  # The file extension of depth
-        self._extension_normal = '.exr'  # The file extension of depth
-        self._extension_boundary = '.png'  # The file extension of depth
+        self._extension_input = ['.jpg']
+        self._extension_depth = ['.exr']
+        self._extension_normal = ['.exr']
+        self._extension_boundary = ['.png']
         self._create_lists_filenames(self.rgb_dir, self.depth_dir, self.normal_dir, self.boundary_dir)
 
 
@@ -264,10 +276,10 @@ class Synthetic(GeoDataset):
         image = imageio.imread(self._datalist_rgb[idx])
         image_new = image
 
+
         normals = None
         boundary = None
         depth = None
-
 
         mask_valid = np.ones(shape=image_new.shape[:2], dtype=np.uint8)
         mask_valid = Mask(data=mask_valid.copy())
@@ -276,25 +288,31 @@ class Synthetic(GeoDataset):
         image = InputImage(data=image_new.copy())
 
         if self.use_depth:
-
             data = api_utils.exr_loader(self._datalist_depth[idx], ndim=1)
             data[np.isinf(data)] = 0
             data[np.isnan(data)] = 0
-            data[data > 3.0] = 0
+            data[data > self.MAX_DEPTH] = 0
             data = data * 1000 / 65535
-            # print('max , min depth :', data.max(), data.min(), data.dtype)
+
             depth = Depth(data=data.copy())
 
         if self.use_normals:
-            data = api_utils.exr_loader(self._datalist_depth[idx])
-            data = data.transpose(1,2,0)
+            data = api_utils.exr_loader(self._datalist_normal[idx])
+            data = data.transpose(1, 2, 0).astype(np.float64)
+            data[np.isinf(data)] = 0
+            data[np.isnan(data)] = 0
+
             normals = Normals(data=data.copy())
+            normals.data[...,0] = normals.data[...,0] * -1
+            normals.data[...,1] = data[...,2]
+            normals.data[...,2] = normals.data[...,1] * -1
 
 
         if self.use_boundary:
             data = imageio.imread(self._datalist_boundary[idx])
-            data[data > 1] = 0
+            data[data > 1] = 0  # Single channel PNG file with value of pixel denoting class
             data = data.astype(np.float32)
+
             boundary = Contours(data=data.copy())
 
         sample = self.format_data(image,
@@ -304,57 +322,32 @@ class Synthetic(GeoDataset):
                                   boundary=boundary)
         return sample
 
-    def _create_lists_filenames(self, rgb_dir, labels_dir, normal_dir, boundary_dir):
+    def _create_lists_filenames(self, rgb_dir, depth_dir, normal_dir, boundary_dir):
         assert os.path.isdir(rgb_dir), 'Dataloader given images directory that does not exist: "%s"' % (rgb_dir)
-        if labels_dir is None:
-            print('labels dir not given, are you running eval on real dataset?')
-        else:
-            assert os.path.isdir(labels_dir), 'Dataloader given labels directory that does not exist: "%s"' % (labels_dir)
 
         # make list of  normals files
-        normalsSearchStr = os.path.join(rgb_dir, '*' + self._extension_input)
-        normalspaths = sorted(glob.glob(normalsSearchStr))
+        for ext in self._extension_input:
+            self._datalist_rgb += sorted(glob.glob(os.path.join(rgb_dir, '*' + ext)))
+        num_images = len(self._datalist_rgb)
+        assert num_images > 0, 'No images found in given dir: {}'.format(rgb_dir)
 
-        self._datalist_rgb = normalspaths
-
-        numImages = len(self._datalist_rgb)
-        if labels_dir is not None:
-            assert os.path.isdir(labels_dir), ('Dataloader given labels directory that does not exist: "%s"'
-                                               % (labels_dir))
-            labelSearchStr = os.path.join(labels_dir, '*' + self._extension_depth)
-            labelpaths = sorted(glob.glob(labelSearchStr))
-            numLabels = len(labelpaths)
-            if numLabels == 0:
-                raise ValueError('No labels found in given directory. Searched for {}'.format(labels_dir))
-            if numImages != numLabels:
-                raise ValueError('The number of images and labels do not match. Please check data,\
-                                found {} images and {} labels' .format(numImages, numLabels))
-            self._datalist_depth = labelpaths
-        else:
-            print('labels dir empty, processing real images')
+        if depth_dir:
+            assert os.path.isdir(depth_dir), ('Dataloader given labels directory that does not exist: "%s"'
+                                               % (depth_dir))
+            for ext in self._extension_depth:
+                self._datalist_depth += sorted(glob.glob(os.path.join(depth_dir, '*' + ext)))
+            assert len(self._datalist_depth) == num_images, 'Num of depth and rgb images not equal'
 
         if normal_dir is not None:
             assert os.path.isdir(normal_dir), ('Dataloader given normals directory that does not exist: "%s"'
                                                % (normal_dir))
-            labelSearchStr = os.path.join(normal_dir, '*' + self._extension_normal)
-            labelpaths = sorted(glob.glob(labelSearchStr))
-            numNormals = len(labelpaths)
-            if numNormals == 0:
-                raise ValueError('No normal files found in given directory. Searched for {}'.format(normal_dir))
-            if numImages != numNormals:
-                raise ValueError('The number of images and normals do not match. Please check data,\
-                                found {} images and {} labels' .format(numImages, numNormals))
-            self._datalist_normal = labelpaths
+            for ext in self._extension_normal:
+                self._datalist_normal += sorted(glob.glob(os.path.join(normal_dir, '*' + ext)))
+            assert len(self._datalist_normal) == num_images, 'Num of depth and rgb images not equal'
 
         if boundary_dir is not None:
             assert os.path.isdir(normal_dir), ('Dataloader given outlines directory that does not exist: "%s"'
                                                % (boundary_dir))
-            labelSearchStr = os.path.join(boundary_dir, '*' + self._extension_boundary)
-            labelpaths = sorted(glob.glob(labelSearchStr))
-            numBoundary = len(labelpaths)
-            if numBoundary == 0:
-                raise ValueError('No normal files found in given directory. Searched for {}'.format(normal_dir))
-            if numImages != numBoundary:
-                raise ValueError('The number of images and outlines do not match. Please check data,\
-                                found {} images and {} labels' .format(numImages, numBoundary))
-            self._datalist_boundary = labelpaths
+            for ext in self._extension_boundary:
+                self._datalist_boundary += sorted(glob.glob(os.path.join(boundary_dir, '*' + ext)))
+            assert len(self._datalist_boundary) == num_images, 'Num of depth and rgb images not equal'
