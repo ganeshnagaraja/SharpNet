@@ -316,7 +316,7 @@ def main():
     config = AttrDict(config_yaml)
     print(colored('Config being used for training:\n{}\n\n'.format(oyaml.dump(config_yaml)), 'green'))
 
-    os.environ['CUDA_VISIBLE_DEVICES'] = config.train.cuda_device
+    # os.environ['CUDA_VISIBLE_DEVICES'] = config.train.cuda_device
     cuda = False if config.train.nocuda else True
 
     resnet50_url = 'https://download.pytorch.org/models/resnet50-19c8e357.pth'
