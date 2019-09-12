@@ -336,7 +336,7 @@ class Synthetic(GeoDataset):
                                                % (depth_dir))
             for ext in self._extension_depth:
                 self._datalist_depth += sorted(glob.glob(os.path.join(depth_dir, '*' + ext)))
-            assert len(self._datalist_depth) == num_images, 'Num of depth and rgb images not equal'
+            assert len(self._datalist_depth) == num_images, 'Num of depth and rgb images not equal {} {}'.format(depth_dir, rgb_dir)
 
         if normal_dir is not None:
             assert os.path.isdir(normal_dir), ('Dataloader given normals directory that does not exist: "%s"'
