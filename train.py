@@ -15,6 +15,7 @@ from sharpnet_model import *
 from loss import *
 from resnet import Bottleneck as ResBlock
 from utils import *
+import torch.nn as nn
 
 import os
 import sys
@@ -380,6 +381,7 @@ def main():
         print('Could not load the pretrained model weights')
         sys.exit(0)
 
+    model = nn.DataParallel(model)
     model.to(device)
     model.zero_grad()
     model.train()
