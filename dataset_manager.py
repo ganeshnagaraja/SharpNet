@@ -247,14 +247,7 @@ class ClearGraspDataset(Dataset):
     def __init__(self, rgb_dir, depth_dir, normals_dir, boundary_dir, masks_dir, transform=None, input_only=None,
                  use_boundary=True,
                  use_depth=True,
-                 use_normals=True,
-                 normalize_input=True):
-        # super(ClearGraspDataset, self).__init__(img_list=None,
-        #                                  transforms=transforms,
-        #                                  use_boundary=use_boundary,
-        #                                  use_depth=use_depth,
-        #                                  use_normals=use_normals)
-
+                 use_normals=True):
         self.MAX_DEPTH = 3.0
         self.use_boundary = use_boundary
         self.use_depth = use_depth
