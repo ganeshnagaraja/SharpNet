@@ -3,4 +3,4 @@ checkpoints/*
 datasets/*
 logs/*
 models/*
-
+data/*

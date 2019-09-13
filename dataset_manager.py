@@ -12,7 +12,10 @@ import data_transforms as transforms
 import random
 import cv2
 from api import utils as api_utils
-
+import torch.nn as nn
+from imgaug import augmenters as iaa
+import imgaug as ia
+import torchvision
 
 class GeoDataset(Dataset):
     def __init__(self, img_list, root_dir='', img_size=480, transforms=None,
@@ -240,89 +243,140 @@ class NYUDataset(GeoDataset):
         return sample
 
 
-class Synthetic(GeoDataset):
-    def __init__(self, rgb_dir, depth_dir, normals_dir, boundary_dir, split_type='train', root_dir='', img_size=480, transforms=None,
-                 use_boundary=False,
+class ClearGraspDataset(Dataset):
+    def __init__(self, rgb_dir, depth_dir, normals_dir, boundary_dir, masks_dir, transform=None, input_only=None,
+                 use_boundary=True,
                  use_depth=True,
                  use_normals=True,
-                 input_type='image'):
-        super(Synthetic, self).__init__(img_list=None, root_dir=root_dir, img_size=img_size,
-                                         transforms=transforms,
-                                         use_boundary=use_boundary,
-                                         use_depth=use_depth,
-                                         use_normals=use_normals,
-                                         input_type=input_type)
+                 normalize_input=True):
+        # super(ClearGraspDataset, self).__init__(img_list=None,
+        #                                  transforms=transforms,
+        #                                  use_boundary=use_boundary,
+        #                                  use_depth=use_depth,
+        #                                  use_normals=use_normals)
 
         self.MAX_DEPTH = 3.0
+        self.use_boundary = use_boundary
+        self.use_depth = use_depth
+        self.use_normals = use_normals
+        self.transform = transform
+        self.input_only = input_only
+
+        self.mean = [0.485, 0.456, 0.406]
+        self.std = [0.229, 0.224, 0.225]
+
         self.rgb_dir = rgb_dir
         self.depth_dir = depth_dir
         self.normal_dir = normals_dir
         self.boundary_dir = boundary_dir
+        self.masks_dir = masks_dir
         self._datalist_rgb = []
         self._datalist_depth = []
         self._datalist_normal = []
         self._datalist_boundary = []
+        self._datalist_mask = []
         self._extension_input = ['-transparent-rgb-img.jpg', '-rgb.jpg', '-input-img.jpg']
         self._extension_depth = ['depth-rectified.exr', 'transparent-depth-img.exr']
         self._extension_normal = ['-cameraNormals.exr', '-normals.exr']
-        self._extension_boundary = ['outlineSegmentation.png', ]
-        self._create_lists_filenames(self.rgb_dir, self.depth_dir, self.normal_dir, self.boundary_dir)
+        self._extension_boundary = ['outlineSegmentation.png',]
+        self._extension_mask = ['-mask.png']
+        self._create_lists_filenames(self.rgb_dir, self.depth_dir, self.normal_dir, self.boundary_dir, self.masks_dir)
 
 
     def __len__(self):
         return len(self._datalist_rgb)
 
     def __getitem__(self, idx):
-        image = imageio.imread(self._datalist_rgb[idx])
-        image_new = image
+        _img = imageio.imread(self._datalist_rgb[idx])
 
+        if self.masks_dir:
+            _mask = imageio.imread(self._datalist_mask[idx])
 
         normals = None
         boundary = None
         depth = None
 
-        mask_valid = np.ones(shape=image_new.shape[:2], dtype=np.uint8)
-        mask_valid = Mask(data=mask_valid.copy())
-
-        image_new = Image.fromarray(image_new)
-        image = InputImage(data=image_new.copy())
-
         if self.use_depth:
-            data = api_utils.exr_loader(self._datalist_depth[idx], ndim=1)
-            data[np.isinf(data)] = 0
-            data[np.isnan(data)] = 0
-            data[data > self.MAX_DEPTH] = 0
-            data = data * 1000 / 65535
-
-            depth = Depth(data=data.copy())
+            _depth = api_utils.exr_loader(self._datalist_depth[idx], ndim=1)
+            _depth[np.isinf(_depth)] = 0
+            _depth[np.isnan(_depth)] = 0
+            _depth[_depth > self.MAX_DEPTH] = 0
+            _depth = _depth * 1000 / 65535
 
         if self.use_normals:
-            data = api_utils.exr_loader(self._datalist_normal[idx])
-            data = data.transpose(1, 2, 0).astype(np.float64)
-            data[np.isinf(data)] = 0
-            data[np.isnan(data)] = 0
+            _normals_orig = api_utils.exr_loader(self._datalist_normal[idx])
+            _normals_orig[np.isinf(_normals_orig)] = 0
+            _normals_orig[np.isnan(_normals_orig)] = 0
 
-            normals = Normals(data=data.copy())
-            normals.data[...,0] = normals.data[...,0] * -1
-            normals.data[...,1] = data[...,2]
-            normals.data[...,2] = normals.data[...,1] * -1
+            # Making all values of invalid pixels marked as -1.0 to 0.
+            # In raw data, invalid pixels are marked as (-1, -1, -1) so that on conversion to RGB they appear black.
+            mask_invalid_pixels = np.all(_normals_orig == -1.0, axis=0)
+            _normals_orig[:, mask_invalid_pixels] = 0.0
 
+            # Convert normals into SharpNet format
+            _normals = np.zeros_like(_normals_orig)
+            _normals[0, ...] = -1 * _normals_orig[0, ...]
+            _normals[1, ...] = _normals_orig[2, ...]
+            _normals[2, ...] = -1 * _normals_orig[1, ...]
 
         if self.use_boundary:
-            data = imageio.imread(self._datalist_boundary[idx])
-            data[data > 1] = 0  # Single channel PNG file with value of pixel denoting class
-            data = data.astype(np.float32)
+            _boundary = imageio.imread(self._datalist_boundary[idx])
+            _boundary[_boundary > 1] = 0  # Single channel PNG file with value of pixel denoting class
+            _boundary = _boundary.astype(np.float32)
 
-            boundary = Contours(data=data.copy())
+        # Apply image augmentations and convert to Tensor
+        if self.transform:
+            det_tf = self.transform.to_deterministic()
 
-        sample = self.format_data(image,
-                                  mask_valid=mask_valid,
-                                  depth=depth,
-                                  normals=normals,
-                                  boundary=boundary)
+            _img = det_tf.augment_image(_img)
+            if self.masks_dir:
+                _mask = det_tf.augment_image(_mask, hooks=ia.HooksImages(activator=self._activator_masks))
+
+            if self.use_normals:
+                _normals = _normals.transpose((1, 2, 0))  # To Shape: (H, W, 3)
+                _normals = det_tf.augment_image(_normals, hooks=ia.HooksImages(activator=self._activator_masks))
+                _normals = _normals.transpose((2, 0, 1))  # To Shape: (3, H, W)
+
+            if self.use_depth:
+                _depth = det_tf.augment_image(_depth, hooks=ia.HooksImages(activator=self._activator_masks))
+
+            if self.use_boundary:
+                _boundary = det_tf.augment_image(_boundary, hooks=ia.HooksImages(activator=self._activator_masks))
+
+
+        # Return Tensors
+        _img_tensor = torchvision.transforms.ToTensor()(_img)
+        _img_tensor = torchvision.transforms.Normalize(self.mean, self.std)(_img_tensor)
+        if self.masks_dir:
+            _mask = _mask[..., np.newaxis]
+            _mask_tensor = torchvision.transforms.ToTensor()(_mask)
+        else:
+            _mask_tensor = torch.ones((1, _img_tensor.shape[1], _img_tensor.shape[2]), dtype=torch.float32)
+
+        if self.use_depth:
+            _depth_tensor = torch.from_numpy(_depth)
+
+        if self.use_normals:
+            _normals_tensor = torch.from_numpy(_normals)
+            _normals_tensor = nn.functional.normalize(_normals_tensor, p=2, dim=0)
+
+        if self.use_boundary:
+            _boundary_tensor = torch.from_numpy(_boundary)
+
+
+        sample = [_img_tensor, _mask_tensor,
+                  _depth_tensor if self.use_depth else None,
+                  _normals_tensor if self.use_normals else None,
+                  _boundary_tensor if self.use_boundary else None]
+        sample = tuple([m for m in sample if m is not None])
+
+        # TEST VALUES
+        # for n, m in enumerate(sample):
+        #     print('DataLoader Returns:', n, m.dtype, m.shape, m.min(), m.max())
+
         return sample
 
-    def _create_lists_filenames(self, rgb_dir, depth_dir, normal_dir, boundary_dir):
+    def _create_lists_filenames(self, rgb_dir, depth_dir, normal_dir, boundary_dir, mask_dir):
         assert os.path.isdir(rgb_dir), 'Dataloader given images directory that does not exist: "%s"' % (rgb_dir)
 
         # make list of  normals files
@@ -336,18 +390,34 @@ class Synthetic(GeoDataset):
                                                % (depth_dir))
             for ext in self._extension_depth:
                 self._datalist_depth += sorted(glob.glob(os.path.join(depth_dir, '*' + ext)))
-            assert len(self._datalist_depth) == num_images, 'Num of depth and rgb images not equal {} {}'.format(depth_dir, rgb_dir)
+            assert len(self._datalist_depth) == num_images, 'Num of depth {} and rgb {} images not equal'.format(len(self._datalist_depth), num_images)
 
-        if normal_dir is not None:
+        if normal_dir:
             assert os.path.isdir(normal_dir), ('Dataloader given normals directory that does not exist: "%s"'
                                                % (normal_dir))
             for ext in self._extension_normal:
                 self._datalist_normal += sorted(glob.glob(os.path.join(normal_dir, '*' + ext)))
-            assert len(self._datalist_normal) == num_images, 'Num of depth and rgb images not equal'
+            assert len(self._datalist_normal) == num_images, 'Num of normals {} and rgb {} images not equal'.format(len(self._datalist_normal), num_images)
 
-        if boundary_dir is not None:
-            assert os.path.isdir(normal_dir), ('Dataloader given outlines directory that does not exist: "%s"'
+        if boundary_dir:
+            assert os.path.isdir(boundary_dir), ('Dataloader given outlines directory that does not exist: "%s"'
                                                % (boundary_dir))
             for ext in self._extension_boundary:
                 self._datalist_boundary += sorted(glob.glob(os.path.join(boundary_dir, '*' + ext)))
-            assert len(self._datalist_boundary) == num_images, 'Num of depth and rgb images not equal'
+            assert len(self._datalist_boundary) == num_images, 'Num of boundary {} and rgb {} images not equal'.format(len(self._datalist_boundary), num_images)
+
+        if mask_dir:
+            assert os.path.isdir(mask_dir), ('Dataloader given masks directory that does not exist: "%s"' %
+                                               (mask_dir))
+            for ext in self._extension_mask:
+                self._datalist_mask += sorted(glob.glob(os.path.join(mask_dir, '*' + ext)))
+            assert len(self._datalist_mask) == num_images, 'Num of mask {} and rgb {} images not equal'.format(len(self._datalist_mask), num_images)
+
+    def _activator_masks(self, images, augmenter, parents, default):
+        '''Used with imgaug to help only apply some augmentations to images and not labels
+        Eg: Blur is applied to input only, not label. However, resize is applied to both.
+        '''
+        if self.input_only and augmenter.name in self.input_only:
+            return False
+        else:
+            return default

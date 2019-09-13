@@ -16,6 +16,9 @@ from loss import *
 from resnet import Bottleneck as ResBlock
 from utils import *
 import torch.nn as nn
+from imgaug import augmenters as iaa
+import imgaug as ia
+from tqdm import tqdm
 
 import os
 import sys
@@ -36,7 +39,9 @@ def train_epoch(train_loader, val_loader, model, criterion, optimizer, epoch,
 
     loader_iter = iter(train_loader)
 
-    for iter_i, _ in enumerate(train_loader):
+    print('\nEpoch {}/{}'.format(epoch, config.train.max_epoch - 1))
+    print('  Train:')
+    for iter_i, _ in enumerate(tqdm(train_loader)):
         optimizer.zero_grad()
         iter_loss = 0
         iter_normals_loss = 0
@@ -108,7 +113,8 @@ def train_epoch(train_loader, val_loader, model, criterion, optimizer, epoch,
         train_size = len(train_loader.dataset)
         iter_per_epoch = int(train_size/config.train.batch_size)
         train_loss_meter.add(float(iter_loss))
-        print("\nepoch: " + str(epoch) + " | iter: {}/{} ".format(iter_i, iter_per_epoch) + "| Train Loss: " + str(float(iter_loss)) + '\n')
+        if config.train.verbose:
+            print("\nepoch: " + str(epoch) + " | iter: {}/{} ".format(iter_i, iter_per_epoch) + "| Train Loss: " + str(float(iter_loss)) + '\n')
         train_writer.add_scalar("train_loss", train_loss_meter.value()[0],
                                 int(epoch) * iter_per_epoch + iter_i)
 
@@ -123,12 +129,12 @@ def train_epoch(train_loader, val_loader, model, criterion, optimizer, epoch,
         normals_pred = normals_pred.detach().cpu() if normals_gt is not None else torch.ones_like(input, dtype=torch.float32)
 
         grid_image = create_grid_image(input.detach().cpu(),
-                                             normals_gt.detach().cpu() , normals_pred.detach().cpu().float(),
-                                             depth_gt.detach().cpu(), depth_pred.detach().cpu(),
-                                             max_num_images_to_save=16)
+                                        normals_gt.detach().cpu() , normals_pred.detach().cpu().float(),
+                                        depth_gt.detach().cpu(), depth_pred.detach().cpu(),
+                                        max_num_images_to_save=16)
         train_writer.add_image('Train image', grid_image, int(epoch) * iter_per_epoch + iter_i)
 
-        if (iter_i + 1) % 50 == 0:
+        if (iter_i + 1) % 10 == 0:
             val_loss = 0
             val_depth_loss = 0
             val_grad_loss = 0
@@ -137,6 +143,8 @@ def train_epoch(train_loader, val_loader, model, criterion, optimizer, epoch,
             val_consensus_loss = 0
 
             val_size = len(val_loader.dataset)
+
+            print('  Wait...Validation Running...:')
 
             with torch.no_grad():
                 # evaluate on validation set
@@ -175,8 +183,9 @@ def train_epoch(train_loader, val_loader, model, criterion, optimizer, epoch,
                         val_normals_loss += float(normals_loss) / 50
 
             val_loss_meter.add(val_loss)
-            print("epoch: " + str(epoch) + " | iter: {}/{} ".format(iter_i, iter_per_epoch) + "| Val Loss: " + str(
-                float(val_loss)))
+            if config.train.verbose:
+                print("epoch: " + str(epoch) + " | iter: {}/{} ".format(iter_i, iter_per_epoch) + "| Val Loss: " + str(
+                    float(val_loss)))
             val_writer.add_scalar("val_loss", val_loss_meter.value()[0],
                                   int(epoch) * iter_per_epoch + iter_i)
 
@@ -186,11 +195,11 @@ def train_epoch(train_loader, val_loader, model, criterion, optimizer, epoch,
                                   boundary_loss_meter, val_boundary_loss,
                                   grad_loss_meter, val_grad_loss,
                                   consensus_loss_meter, val_consensus_loss)
-            
+
             grid_image = create_grid_image(input.detach().cpu(),
                                              normals_gt.detach().cpu(),normals_pred.detach().cpu().float(),
                                              depth_gt.detach().cpu(), depth_pred.detach().cpu(),
-                                             max_num_images_to_save=16)
+                                             max_num_images_to_save=200)
             val_writer.add_image('Val image', grid_image, int(epoch) * iter_per_epoch + iter_i)
 
             model.train()
@@ -198,15 +207,14 @@ def train_epoch(train_loader, val_loader, model, criterion, optimizer, epoch,
             freeze_decoders = config.train.decoder_freeze.split(',')
             freeze_model_decoders(model, freeze_decoders)
 
-        if (iter_i + 1) % 1000 == 0:
-            print('Saving checkpoint')
-            if not os.path.exists(model_save_path):
-                os.makedirs(model_save_path)
-            torch.save(
-                model.state_dict(),
-                os.path.join(model_save_path, "checkpoint_{}_iter_{}.pth".format(epoch, iter_i + 1)),
-            )
-            print('Done')
+        # if (iter_i + 1) % 100 == 0:
+    print('Saving checkpoint')
+    if not os.path.exists(model_save_path):
+        os.makedirs(model_save_path)
+    torch.save(
+        model.state_dict(),
+        os.path.join(model_save_path, "checkpoint_{}_iter_{}.pth".format(epoch, iter_i + 1)),
+    )
 
 
 def get_trainval_splits(config):
@@ -275,26 +283,40 @@ def get_trainval_splits(config):
                                  use_boundary=False,
                                  use_normals=False)
     elif args.dataset == 'clear_grasp':
+        augs_test = iaa.Sequential([
+            iaa.Resize({
+                "height": 320,
+                "width": 320
+            }, interpolation='nearest'),
+        ])
+
         train_loader_list = []
         for dataset in config.train.datasetsTrain:
-            train_dataset = Synthetic(dataset.rgb, dataset.depth, dataset.normals, dataset.outlines, split_type='train', root_dir=args.root_dir,
-                                   transforms=t,
-                                   use_depth=True,
-                                   use_boundary=True,
-                                   use_normals=True)
+            train_dataset = ClearGraspDataset(dataset.rgb, dataset.depth, dataset.normals, dataset.outlines, dataset.masks,
+                                   transform=augs_test,
+                                   input_only=None,
+                                   use_depth=True if args.depth else False,
+                                   use_boundary=True if args.boundary else False,
+                                   use_normals=True if args.normals else False)
             train_loader_list.append(train_dataset)
 
         test_loader_list = []
         for dataset in config.train.datasetsVal:
-            val_dataset = Synthetic(dataset.rgb, dataset.depth, dataset.normals, dataset.outlines, split_type='test', root_dir=args.root_dir,
-                                 transforms=t,
-                                 use_depth=True,
-                                 use_boundary=True,
-                                 use_normals=True)
+            val_dataset = ClearGraspDataset(dataset.rgb, dataset.depth, dataset.normals, dataset.outlines, dataset.masks,
+                                 transform=augs_test,
+                                 input_only=None,
+                                 use_depth=True if args.depth else False,
+                                 use_boundary=True if args.boundary else False,
+                                 use_normals=True if args.normals else False)
             test_loader_list.append(val_dataset)
 
         train_dataset = torch.utils.data.ConcatDataset(train_loader_list)
         val_dataset = torch.utils.data.ConcatDataset(test_loader_list)
+
+        train_size = int(0.1 * len(train_dataset))
+        train_dataset = torch.utils.data.Subset(train_dataset, range(train_size))
+        train_size = int(0.1 * len(val_dataset))
+        val_dataset = torch.utils.data.Subset(val_dataset, range(train_size))
 
     train_dataloader = DataLoader(train_dataset, batch_size=int(args.batch_size),
                                   shuffle=True, num_workers=int(args.num_workers))
@@ -381,7 +403,7 @@ def main():
         print('Could not load the pretrained model weights')
         sys.exit(0)
 
-    # model = nn.DataParallel(model)
+    model = nn.DataParallel(model)
     model.to(device)
     model.zero_grad()
     model.train()
@@ -428,7 +450,7 @@ def main():
     print('Experiment Name: {}'.format(exp_name))
 
     log_dir = os.path.join('logs', 'Joint', str(exp_name) + '_' + date_str)
-    cp_dir = os.path.join('checkpoints', 'Joint', str(exp_name) + '_' + date_str)
+    cp_dir = os.path.join('logs', 'Joint', str(exp_name) + '_' + date_str)
     print('Checkpoint Directory: {}'.format(cp_dir))
 
     train_writer = SummaryWriter(os.path.join(log_dir, 'train'))

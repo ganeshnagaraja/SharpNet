@@ -356,7 +356,7 @@ def create_grid_image(inputs, normals_gt, normals_pred, depth_gt, depth_pred, ma
         numpy.ndarray: A numpy array with of input images arranged in a grid
     '''
     min_depth = 0.05
-    max_depth = 2.5
+    max_depth = 2.0
     depth_gt = depth_gt * 65535 / 1000 # de-normalizing depth
     depth_pred = depth_pred * 65535 / 1000  # de-normalizing depth
 
@@ -380,11 +380,15 @@ def create_grid_image(inputs, normals_gt, normals_pred, depth_gt, depth_pred, ma
         k = transforms.ToTensor()(depth2rgb(k.squeeze(0).numpy(),
                                                       min_depth=min_depth,
                                                       max_depth=max_depth))
-        l = transforms.ToTensor()(depth2rgb(l.squeeze(0).numpy(),
+        l_stat = transforms.ToTensor()(depth2rgb(l.squeeze(0).numpy(),
                                                       min_depth=min_depth,
                                                       max_depth=max_depth))
+        l_dyn = transforms.ToTensor()(depth2rgb(l.squeeze(0).numpy(),
+                                                      min_depth=min_depth,
+                                                      max_depth=max_depth,
+                                                      dynamic_scaling=True))
 
-        images.extend([h, i, j, k, l])
-    grid_image = make_grid(images, nrow=5, normalize=False, scale_each=False)
+        images.extend([h, i, j, k, l_stat, l_dyn])
+    grid_image = make_grid(images, nrow=6, normalize=False, scale_each=False)
 
     return grid_image
