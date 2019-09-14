@@ -1,0 +1,42 @@
+# train.py Config - Training
+train:
+  # Synthetic datasets with ground truth labelsinp, output shapes :
+  datasetsTrain:
+    - rgb: 'data/datasets/train/cup-with-waves-lying-flat-val/source-files/rgb-imgs'
+      depth: 'data/datasets/train/cup-with-waves-lying-flat-val/source-files/depth-imgs-rectified'
+      normals: 'data/datasets/train/cup-with-waves-lying-flat-val/source-files/camera-normals'
+      outlines: 'data/datasets/train/cup-with-waves-lying-flat-val/source-files/outlines'
+      masks: ''
+
+  # Synthetic datasets with ground truth labels - 10% split of train
+  datasetsVal:
+    - rgb: 'data/datasets/paper_figures_dataset_real/selected_val/d435/'
+      depth: 'data/datasets/paper_figures_dataset_real/selected_val/d435/'
+      normals: 'data/datasets/paper_figures_dataset_real/selected_val/d435/'
+      outlines: 'data/datasets/paper_figures_dataset_real/selected_val/d435/'
+      masks: 'data/datasets/paper_figures_dataset_real/selected_val/d435/'
+
+ # Training/Validation Params
+  dataset: 'clear_grasp' # possible values ['Synthetic', 'NYU', 'PBRS']
+  experiment_name: 'new_syn_dataset'
+  batch_size: 4
+  iter_size: 3
+  boundary: True
+  normals: True
+  depth: True
+  geo_consensus: True
+  decoder_freeze: ''
+  verbose: False
+  root_dir: 'data'
+  nocuda: False
+  learning_rate: 1e-5 #8e-3
+  lr_mode: 'poly'
+  max_epoch: 100
+  start_epoch: 0
+  gradient_step: 5e-2
+  cuda_device: '0,1'
+  num_workers: 4
+  pretrained_model: 'models/final_checkpoint_NYU.pth'
+  bias: True
+  optimizer: 'SGD'
+  decay: 5e-5
