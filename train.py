@@ -198,7 +198,7 @@ def train_epoch(train_loader, val_loader, model, criterion, optimizer, epoch,
             freeze_decoders = config.train.decoder_freeze.split(',')
             freeze_model_decoders(model, freeze_decoders)
 
-        if (iter_i + 1) % 1000 == 0:
+        if (iter_i + 1) % 150 == 0:
             print('Saving checkpoint')
             if not os.path.exists(model_save_path):
                 os.makedirs(model_save_path)
@@ -459,12 +459,12 @@ def main():
                     config=config, boundary_loss_meter=boundary_loss_meter, consensus_loss_meter=consensus_loss_meter)
 
         # Save a model
-        if epoch % 2 == 0 and epoch > int(0.9 * config.train.max_epoch):
+        if epoch % 1 == 0 and epoch > int(0.9 * config.train.max_epoch):
             torch.save(
                 model.state_dict(),
                 os.path.join(cp_dir, 'checkpoint_{}_final.pth'.format(config.train.start_epoch + epoch)),
             )
-        elif epoch % 10 == 0:
+        elif epoch % 1 == 0:
             torch.save(
                 model.state_dict(),
                 os.path.join(cp_dir, 'checkpoint_{}_final.pth'.format(config.train.start_epoch + epoch)),
