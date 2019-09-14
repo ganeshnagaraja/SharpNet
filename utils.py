@@ -151,6 +151,7 @@ def get_gt_sample(dataloader, loader_iter, args):
             input, mask_gt, depth_gt = data
     else:
         depth_gt = None
+        boundary_gt = None
         if args.boundary and args.normals:
             input, mask_gt, normals_gt, boundary_gt = data
         elif args.normals and not args.boundary:
@@ -357,7 +358,7 @@ def create_grid_image(inputs, normals_gt, normals_pred, depth_gt, depth_pred, ma
         numpy.ndarray: A numpy array with of input images arranged in a grid
     '''
     min_depth = 0.05
-    max_depth = 2.0
+    max_depth = 10.0
     depth_gt = depth_gt * 65535 / 1000 # de-normalizing depth
     depth_pred = depth_pred * 65535 / 1000  # de-normalizing depth
 
@@ -368,11 +369,22 @@ def create_grid_image(inputs, normals_gt, normals_pred, depth_gt, depth_pred, ma
     inputs[:, 1, :, :] = inputs[:, 1, :, :] * std[1] + mean[1]
     inputs[:, 2, :, :] = inputs[:, 2, :, :] * std[2] + mean[2]
 
+    # normals_pred[normals_pred < 0] = 0
+
+    normals_gt[:, 0, :, :] = normals_gt[:, 0, :, :] * -1
+    normals_gt[:, 1, :, :] = normals_gt[:, 1, :, :]
+    normals_gt[:, 2, :, :] = normals_gt[:, 2, :, :] * -1
+
+    normals_pred[:, 0, :, :] = normals_pred[:, 0, :, :] * -1
+    normals_pred[:, 1, :, :] = normals_pred[:, 1, :, :]
+    normals_pred[:, 2, :, :] = normals_pred[:, 2, :, :] * -1
+
     img_tensor = inputs[:max_num_images_to_save]
     img_tensor_normals_gt = normals_gt[:max_num_images_to_save]
     img_tensor_normals_pred = normals_pred[:max_num_images_to_save]
     img_tensor_depth_gt = depth_gt[:max_num_images_to_save]
     img_tensor_depth_pred = depth_pred[:max_num_images_to_save]
+
 
     images = []
     for h, i, j, k, l in zip(img_tensor, img_tensor_normals_gt, img_tensor_normals_pred, img_tensor_depth_gt, img_tensor_depth_pred):

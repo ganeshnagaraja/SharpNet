@@ -60,8 +60,6 @@ class GeoDataset(Dataset):
             normalize = False
             flip = None
 
-            if 'RESIZE_TRANSPARENT' in self.transforms.keys():
-                h, w = 256, 256
             if 'SCALE' in self.transforms.keys():
                 ratio = random.uniform(1.0 / self.transforms['SCALE'], 1.0 * self.transforms['SCALE'])
             if 'HORIZONTALFLIP' in self.transforms.keys():
@@ -75,13 +73,6 @@ class GeoDataset(Dataset):
                 gamma_ratio = random.uniform(1 / self.transforms['GAMMA'], self.transforms['GAMMA'])
             if 'NORMALIZE' in self.transforms.keys():
                 normalize = True
-
-            for m, mode in enumerate(data):
-                if mode is not None:
-                    if m == 0:
-                        mode.resize(w, h, cv2.INTER_LINEAR)
-                    else:
-                        mode.resize(w, h, cv2.INTER_NEAREST)
 
             for mode in data:
                 if mode is not None:
@@ -297,20 +288,19 @@ class ClearGraspDataset(Dataset):
             _depth = _depth * 1000 / 65535
 
         if self.use_normals:
-            _normals_orig = api_utils.exr_loader(self._datalist_normal[idx])
-            _normals_orig[np.isinf(_normals_orig)] = 0
-            _normals_orig[np.isnan(_normals_orig)] = 0
+            _normals = api_utils.exr_loader(self._datalist_normal[idx])
+            _normals[np.isinf(_normals)] = 0
+            _normals[np.isnan(_normals)] = 0
 
             # Making all values of invalid pixels marked as -1.0 to 0.
             # In raw data, invalid pixels are marked as (-1, -1, -1) so that on conversion to RGB they appear black.
-            mask_invalid_pixels = np.all(_normals_orig == -1.0, axis=0)
-            _normals_orig[:, mask_invalid_pixels] = 0.0
+            mask_invalid_pixels = np.all(_normals == -1.0, axis=0)
+            _normals[:, mask_invalid_pixels] = 0.0
 
             # Convert normals into SharpNet format
-            _normals = np.zeros_like(_normals_orig)
-            _normals[0, ...] = -1 * _normals_orig[0, ...]
-            _normals[1, ...] = _normals_orig[2, ...]
-            _normals[2, ...] = -1 * _normals_orig[1, ...]
+            _normals[0, ...] = _normals[0, ...] * -1
+            _normals[1, ...] = _normals[1, ...]
+            _normals[2, ...] = _normals[2, ...] * -1
 
         if self.use_boundary:
             _boundary = imageio.imread(self._datalist_boundary[idx])

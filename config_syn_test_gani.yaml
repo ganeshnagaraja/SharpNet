@@ -1,0 +1,48 @@
+# train.py Config - Training
+train:
+  # Synthetic datasets with ground truth labelsinp, output shapes :
+  datasetsTrain:
+    # - rgb: 'data/datasets/train/cup-with-waves-lying-flat-val/source-files/rgb-imgs'
+    #   depth: 'data/datasets/train/cup-with-waves-lying-flat-val/source-files/depth-imgs-rectified'
+    #   normals: 'data/datasets/train/cup-with-waves-lying-flat-val/source-files/camera-normals'
+    #   outlines: 'data/datasets/train/cup-with-waves-lying-flat-val/source-files/outlines'
+    #   masks: ''
+    - rgb: 'datasets/data/val/cup-with-waves-lying-flat-val/source-files/rgb-imgs'
+      depth: 'datasets/data/val/cup-with-waves-lying-flat-val/source-files/depth-imgs-rectified'
+      normals: 'datasets/data/val/cup-with-waves-lying-flat-val/source-files/camera-normals'
+      outlines: 'datasets/data/val/cup-with-waves-lying-flat-val/source-files/outlines'
+      masks: ''
+
+  # Synthetic datasets with ground truth labels - 10% split of train
+  datasetsVal:
+    - rgb: 'datasets/data/val/cup-with-waves-lying-flat-val/source-files/rgb-imgs'
+      depth: 'datasets/data/val/cup-with-waves-lying-flat-val/source-files/depth-imgs-rectified'
+      normals: 'datasets/data/val/cup-with-waves-lying-flat-val/source-files/camera-normals'
+      outlines: 'datasets/data/val/cup-with-waves-lying-flat-val/source-files/outlines'
+      masks: ''
+
+ # Training/Validation Params
+  dataset: 'clear_grasp' # possible values ['clear_grasp', 'NYU', 'PBRS']
+  experiment_name: 'new_syn_dataset'
+  percentforTraining: 0.25
+  batch_size: 2
+  iter_size: 2
+  boundary: False
+  normals: True
+  depth: False
+  geo_consensus: False
+  decoder_freeze: ''
+  verbose: False
+  root_dir: 'datasets'
+  nocuda: False
+  learning_rate: 1e-5 #8e-3
+  lr_mode: 'poly'
+  max_epoch: 100
+  start_epoch: 0
+  gradient_step: 5e-2
+  cuda_device: '0'
+  num_workers: 4
+  pretrained_model: 'models/final_checkpoint_NYU.pth'
+  bias: True
+  optimizer: 'SGD'
+  decay: 5e-5

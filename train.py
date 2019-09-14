@@ -61,7 +61,7 @@ def train_epoch(train_loader,
         iter_consensus_loss = 0
 
         freeze_decoders = config.train.decoder_freeze.split(',')
-        freeze_model_decoders(model, freeze_decoders)
+        freeze_model_decoders(model.module, freeze_decoders)
 
         # accumulated gradients
         for i in range(iter_size):
@@ -136,6 +136,17 @@ def train_epoch(train_loader,
                                                                                               dtype=torch.float32)
         normals_pred = normals_pred.detach().cpu() if normals_gt is not None else torch.ones_like(input,
                                                                                                   dtype=torch.float32)
+        if depth_gt is not None:
+            depth_gt = depth_gt.detach().cpu()
+        else:
+            depth_gt = torch.ones_like(input, dtype=torch.float32)
+            depth_gt = depth_gt[:, 0, : , :].unsqueeze(1)
+
+        if depth_pred is not None:
+            depth_pred = depth_pred.detach().cpu()
+        else:
+            depth_pred = torch.ones_like(input, dtype=torch.float32)
+            depth_pred = depth_pred[:, 0, :, :].unsqueeze(1)
 
         grid_image = create_grid_image(input.detach().cpu(),
                                        normals_gt.detach().cpu(),
@@ -204,6 +215,22 @@ def train_epoch(train_loader,
                                   normals_loss_meter, val_normals_loss, boundary_loss_meter, val_boundary_loss,
                                   grad_loss_meter, val_grad_loss, consensus_loss_meter, val_consensus_loss)
 
+            normals_gt = normals_gt.detach().cpu() if normals_gt is not None else torch.ones_like(input,
+                                                                                              dtype=torch.float32)
+            normals_pred = normals_pred.detach().cpu() if normals_gt is not None else torch.ones_like(input,
+                                                                                                  dtype=torch.float32)
+            if depth_gt is not None:
+                depth_gt = depth_gt.detach().cpu()
+            else:
+                depth_gt = torch.ones_like(input, dtype=torch.float32)
+                depth_gt = depth_gt[:, 0, : , :].unsqueeze(1)
+
+            if depth_pred is not None:
+                depth_pred = normals_pred.detach().cpu()
+            else:
+                depth_pred = torch.ones_like(input, dtype=torch.float32)
+                depth_pred = depth_pred[:, 0, :, :].unsqueeze(1)
+
             grid_image = create_grid_image(input.detach().cpu(),
                                            normals_gt.detach().cpu(),
                                            normals_pred.detach().cpu().float(),
@@ -215,7 +242,7 @@ def train_epoch(train_loader,
             model.train()
 
             freeze_decoders = config.train.decoder_freeze.split(',')
-            freeze_model_decoders(model, freeze_decoders)
+            freeze_model_decoders(model.module, freeze_decoders)
 
         if (iter_i + 1) % 150 == 0:
             print('Saving checkpoint')
@@ -315,6 +342,9 @@ def get_trainval_splits(config):
                                               use_depth=True if args.depth else False,
                                               use_boundary=True if args.boundary else False,
                                               use_normals=True if args.normals else False)
+            print('total len of training dataset :', len(train_dataset))
+            # train_size = int(config.train.percentforTraining * len(train_dataset))
+            # train_dataset = torch.utils.data.Subset(train_dataset, range(train_size))
             train_loader_list.append(train_dataset)
 
         test_loader_list = []
@@ -329,7 +359,10 @@ def get_trainval_splits(config):
                                             use_depth=True if args.depth else False,
                                             use_boundary=True if args.boundary else False,
                                             use_normals=True if args.normals else False)
+            # train_size = int(config.train.percentforTraining * len(val_dataset))
+            # val_dataset = torch.utils.data.Subset(val_dataset, range(train_size))
             test_loader_list.append(val_dataset)
+
 
         train_dataset = torch.utils.data.ConcatDataset(train_loader_list)
         val_dataset = torch.utils.data.ConcatDataset(test_loader_list)
@@ -431,7 +464,7 @@ def main():
     model.train()
 
     freeze_decoders = config.train.decoder_freeze.split(',')
-    freeze_model_decoders(model, freeze_decoders)
+    freeze_model_decoders(model.module, freeze_decoders)
 
     if config.train.dataset != 'NYU':
         sharpnet_loss = SharpNetLoss(lamb=0.5,
