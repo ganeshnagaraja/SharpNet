@@ -57,17 +57,17 @@ train:
   batch_size: 64
   num_workers: 32
   iter_size: 3
-  boundary: True
+  boundary: False
   normals: True
-  depth: True
+  depth: False
   geo_consensus: False
   decoder_freeze: 'depth'
   verbose: False
   root_dir: 'data'
   nocuda: False
   learning_rate: 1e-3
-  lr_mode: 'poly'
-  max_epoch: 20
+  lr_mode: ''
+  max_epoch: 50
   start_epoch: 0
   gradient_step: 5e-2
   cuda_device: '0,1,2,3,4,5,6,7'

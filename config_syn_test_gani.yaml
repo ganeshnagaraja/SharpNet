@@ -35,8 +35,8 @@ train:
   verbose: False
   root_dir: 'datasets'
   nocuda: False
-  learning_rate: 1e-5 #8e-3
-  lr_mode: 'poly'
+  learning_rate: 1e-3 #8e-3
+  lr_mode: ''
   max_epoch: 100
   start_epoch: 0
   gradient_step: 5e-2
@@ -44,5 +44,5 @@ train:
   num_workers: 4
   pretrained_model: 'models/final_checkpoint_NYU.pth'
   bias: True
-  optimizer: 'SGD'
+  optimizer: 'Adam'
   decay: 5e-5
