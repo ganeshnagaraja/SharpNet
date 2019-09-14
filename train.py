@@ -156,95 +156,95 @@ def train_epoch(train_loader,
                                        max_num_images_to_save=16)
         train_writer.add_image('Train image', grid_image, int(epoch) * iter_per_epoch + iter_i)
 
-        if (iter_i + 1) % 10 == 0:
-            val_loss = 0
-            val_depth_loss = 0
-            val_grad_loss = 0
-            val_normals_loss = 0
-            val_boundary_loss = 0
-            val_consensus_loss = 0
+        # if (iter_i + 1) % 10 == 0:
+        #     val_loss = 0
+        #     val_depth_loss = 0
+        #     val_grad_loss = 0
+        #     val_normals_loss = 0
+        #     val_boundary_loss = 0
+        #     val_consensus_loss = 0
 
-            val_size = len(val_loader.dataset)
+        #     val_size = len(val_loader.dataset)
 
-            print('  Wait...Validation Running...:')
+        #     print('  Wait...Validation Running...:')
 
-            with torch.no_grad():
-                # evaluate on validation set
-                model.eval()
-                loader_iter = iter(val_loader)
+        #     with torch.no_grad():
+        #         # evaluate on validation set
+        #         model.eval()
+        #         loader_iter = iter(val_loader)
 
-                n_val_batches = int(float(val_size) / batch_size)
-                for i in range(n_val_batches)[:50]:
-                    # get ground truth sample
-                    input, mask_gt, depth_gt, normals_gt, boundary_gt = get_gt_sample(
-                        val_loader, loader_iter, config.train)
-                    # compute output
-                    depth_pred, normals_pred, boundary_pred = get_tensor_preds(input, model, config.train)
-                    # compute loss
-                    depth_loss, grad_loss, normals_loss, b_loss, geo_loss = criterion(mask_gt,
-                                                                                      d_pred=depth_pred,
-                                                                                      d_gt=depth_gt,
-                                                                                      n_pred=normals_pred,
-                                                                                      n_gt=normals_gt,
-                                                                                      b_pred=boundary_pred,
-                                                                                      b_gt=boundary_gt,
-                                                                                      use_grad=True)
+        #         n_val_batches = int(float(val_size) / batch_size)
+        #         for i in range(n_val_batches)[:50]:
+        #             # get ground truth sample
+        #             input, mask_gt, depth_gt, normals_gt, boundary_gt = get_gt_sample(
+        #                 val_loader, loader_iter, config.train)
+        #             # compute output
+        #             depth_pred, normals_pred, boundary_pred = get_tensor_preds(input, model, config.train)
+        #             # compute loss
+        #             depth_loss, grad_loss, normals_loss, b_loss, geo_loss = criterion(mask_gt,
+        #                                                                               d_pred=depth_pred,
+        #                                                                               d_gt=depth_gt,
+        #                                                                               n_pred=normals_pred,
+        #                                                                               n_gt=normals_gt,
+        #                                                                               b_pred=boundary_pred,
+        #                                                                               b_gt=boundary_gt,
+        #                                                                               use_grad=True)
 
-                    iter_loss = depth_loss + normals_loss + grad_loss + b_loss + geo_loss
+        #             iter_loss = depth_loss + normals_loss + grad_loss + b_loss + geo_loss
 
-                    iter_loss = float(iter_loss) / 50
-                    val_loss += iter_loss
-                    if grad_loss != 0:
-                        val_grad_loss += float(grad_loss) / 50
-                    if depth_loss != 0:
-                        val_depth_loss += float(depth_loss) / 50
-                    if b_loss != 0:
-                        val_boundary_loss += float(b_loss) / 50
-                    if geo_loss != 0:
-                        val_consensus_loss += float(geo_loss) / 50
-                    if normals_loss != 0:
-                        val_normals_loss += float(normals_loss) / 50
+        #             iter_loss = float(iter_loss) / 50
+        #             val_loss += iter_loss
+        #             if grad_loss != 0:
+        #                 val_grad_loss += float(grad_loss) / 50
+        #             if depth_loss != 0:
+        #                 val_depth_loss += float(depth_loss) / 50
+        #             if b_loss != 0:
+        #                 val_boundary_loss += float(b_loss) / 50
+        #             if geo_loss != 0:
+        #                 val_consensus_loss += float(geo_loss) / 50
+        #             if normals_loss != 0:
+        #                 val_normals_loss += float(normals_loss) / 50
 
-            val_loss_meter.add(val_loss)
-            if config.train.verbose:
-                print("epoch: " + str(epoch) + " | iter: {}/{} ".format(iter_i, iter_per_epoch) + "| Val Loss: " +
-                      str(float(val_loss)))
-            val_writer.add_scalar("val_loss", val_loss_meter.value()[0], int(epoch) * iter_per_epoch + iter_i)
+        #     val_loss_meter.add(val_loss)
+        #     if config.train.verbose:
+        #         print("epoch: " + str(epoch) + " | iter: {}/{} ".format(iter_i, iter_per_epoch) + "| Val Loss: " +
+        #               str(float(val_loss)))
+        #     val_writer.add_scalar("val_loss", val_loss_meter.value()[0], int(epoch) * iter_per_epoch + iter_i)
 
-            write_loss_components(val_writer, iter_i, epoch, train_size, config.train, depth_loss_meter, val_depth_loss,
-                                  normals_loss_meter, val_normals_loss, boundary_loss_meter, val_boundary_loss,
-                                  grad_loss_meter, val_grad_loss, consensus_loss_meter, val_consensus_loss)
+        #     write_loss_components(val_writer, iter_i, epoch, train_size, config.train, depth_loss_meter, val_depth_loss,
+        #                           normals_loss_meter, val_normals_loss, boundary_loss_meter, val_boundary_loss,
+        #                           grad_loss_meter, val_grad_loss, consensus_loss_meter, val_consensus_loss)
 
-            normals_gt = normals_gt.detach().cpu() if normals_gt is not None else torch.ones_like(input,
-                                                                                              dtype=torch.float32)
-            normals_pred = normals_pred.detach().cpu() if normals_gt is not None else torch.ones_like(input,
-                                                                                                  dtype=torch.float32)
-            if depth_gt is not None:
-                depth_gt = depth_gt.detach().cpu()
-            else:
-                depth_gt = torch.ones_like(input, dtype=torch.float32)
-                depth_gt = depth_gt[:, 0, : , :].unsqueeze(1)
+        #     normals_gt = normals_gt.detach().cpu() if normals_gt is not None else torch.ones_like(input,
+        #                                                                                       dtype=torch.float32)
+        #     normals_pred = normals_pred.detach().cpu() if normals_gt is not None else torch.ones_like(input,
+        #                                                                                           dtype=torch.float32)
+        #     if depth_gt is not None:
+        #         depth_gt = depth_gt.detach().cpu()
+        #     else:
+        #         depth_gt = torch.ones_like(input, dtype=torch.float32)
+        #         depth_gt = depth_gt[:, 0, : , :].unsqueeze(1)
 
-            if depth_pred is not None:
-                depth_pred = depth_pred.detach().cpu()
-            else:
-                depth_pred = torch.ones_like(input, dtype=torch.float32)
-                depth_pred = depth_pred[:, 0, :, :].unsqueeze(1)
+        #     if depth_pred is not None:
+        #         depth_pred = depth_pred.detach().cpu()
+        #     else:
+        #         depth_pred = torch.ones_like(input, dtype=torch.float32)
+        #         depth_pred = depth_pred[:, 0, :, :].unsqueeze(1)
 
-            grid_image = create_grid_image(input.detach().cpu(),
-                                           normals_gt.detach().cpu(),
-                                           normals_pred.detach().cpu().float(),
-                                           depth_gt.detach().cpu(),
-                                           depth_pred.detach().cpu(),
-                                           max_num_images_to_save=200)
-            val_writer.add_image('Val image', grid_image, int(epoch) * iter_per_epoch + iter_i)
+        #     grid_image = create_grid_image(input.detach().cpu(),
+        #                                    normals_gt.detach().cpu(),
+        #                                    normals_pred.detach().cpu().float(),
+        #                                    depth_gt.detach().cpu(),
+        #                                    depth_pred.detach().cpu(),
+        #                                    max_num_images_to_save=200)
+        #     val_writer.add_image('Val image', grid_image, int(epoch) * iter_per_epoch + iter_i)
 
-            model.train()
+        #     model.train()
 
-            freeze_decoders = config.train.decoder_freeze.split(',')
-            freeze_model_decoders(model.module, freeze_decoders)
+        #     freeze_decoders = config.train.decoder_freeze.split(',')
+        #     freeze_model_decoders(model.module, freeze_decoders)
 
-        if (iter_i + 1) % 150 == 0:
+        if (iter_i + 1) % 100 == 0:
             print('Saving checkpoint')
             if not os.path.exists(model_save_path):
                 os.makedirs(model_save_path)
