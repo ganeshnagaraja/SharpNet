@@ -226,7 +226,7 @@ def train_epoch(train_loader,
                 depth_gt = depth_gt[:, 0, : , :].unsqueeze(1)
 
             if depth_pred is not None:
-                depth_pred = normals_pred.detach().cpu()
+                depth_pred = depth_pred.detach().cpu()
             else:
                 depth_pred = torch.ones_like(input, dtype=torch.float32)
                 depth_pred = depth_pred[:, 0, :, :].unsqueeze(1)

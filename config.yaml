@@ -54,14 +54,15 @@ train:
  # Training/Validation Params
   dataset: 'clear_grasp' # possible values ['Synthetic', 'NYU', 'PBRS']
   experiment_name: 'without_depth'
-  batch_size: 64
+  percentforTraining: 1.0
+  batch_size: 196
   num_workers: 32
   iter_size: 3
   boundary: False
   normals: True
   depth: False
   geo_consensus: False
-  decoder_freeze: 'depth'
+  decoder_freeze: ''
   verbose: False
   root_dir: 'data'
   nocuda: False
