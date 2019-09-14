@@ -59,7 +59,7 @@ train:
   iter_size: 3
   boundary: True
   normals: True
-  depth: False
+  depth: True
   geo_consensus: False
   decoder_freeze: 'depth'
   verbose: False
