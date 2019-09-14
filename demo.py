@@ -50,6 +50,8 @@ def get_pred_from_input(image_pil, args):
 
     image = torch.autograd.Variable(image).unsqueeze(0)
     image = image.to(device)
+    print('image:', image.shape, image.dtype, image.min(), image.max())
+    print('args:', args.depth, args.normals, args.boundary)
 
     if args.boundary:
         if args.depth and args.normals:
@@ -94,10 +96,18 @@ def get_pred_from_input(image_pil, args):
         normals = normals_pred.astype('uint8')
 
     if args.depth:
-        depth_pred = depth_pred.data.cpu().numpy()[0, 0, ...] * 65535 / 1000
+        depth_pred = depth_pred.data.cpu().numpy()
+        print('depth_pred0:', depth_pred.dtype, depth_pred.min(), depth_pred.max())
+
+        depth_pred = depth_pred[0, 0, ...] * 65535 / 1000
+        print('depth_pred1:', depth_pred.dtype, depth_pred.min(), depth_pred.max())
+
         depth_pred = (1 / scale) * cv2.resize(depth_pred, dsize=(w, h), interpolation=cv2.INTER_LINEAR)
+        print('depth_pred2:', depth_pred.dtype, depth_pred.min(), depth_pred.max())
+
         m = np.min(depth_pred)
         M = np.max(depth_pred)
+        print('depth_pred3:', m, M)
         depth_pred = (depth_pred - m) / (M - m)
         depth = Image.fromarray(np.uint8(plt.cm.jet(depth_pred) * 255))
         depth = np.array(depth)[:, :, :3]
@@ -171,6 +181,7 @@ model_dict = model.state_dict()
 
 # Load model
 trained_model_path = args.model_path
+print('Loading checkpoint {}'.format(trained_model_path))
 trained_model_dict = torch.load(trained_model_path, map_location=lambda storage, loc: storage)
 
 # load image resnet encoder and mask_encoder and normals_decoder (not depth_decoder or normal resnet)
