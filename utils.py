@@ -150,6 +150,7 @@ def get_gt_sample(dataloader, loader_iter, args):
         else:
             input, mask_gt, depth_gt = data
     else:
+        depth_gt = None
         if args.boundary and args.normals:
             input, mask_gt, normals_gt, boundary_gt = data
         elif args.normals and not args.boundary:
